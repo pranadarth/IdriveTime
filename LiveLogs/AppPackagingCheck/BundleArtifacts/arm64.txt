@@ -1,0 +1,2 @@
+MainPackage=C:\Users\pranadarth\source\repos\Just Dummy\IdriveTime\LiveLogs\AppPackagingCheck\bin\ARM64\Debug\AppPackagingCheck_1.0.0.0_ARM64_Debug.appx
+SymbolPackage=C:\Users\pranadarth\source\repos\Just Dummy\IdriveTime\LiveLogs\AppPackagingCheck\obj\ARM64\Debug\Symbols\AppPackagingCheck_1.0.0.0_ARM64_Debug.appxsym

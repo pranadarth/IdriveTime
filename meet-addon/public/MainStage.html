@@ -1,0 +1,19 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Meet Add‑on Main Stage</title>
+</head>
+<body style="margin:0;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;background:white">
+    <div>
+        <h1>Hello, All!</h1>
+        <h1 id="greeting">Loading…</h1>
+        <p id="result">This is the Main Stage.</p>
+    </div>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="bundle.js" defer></script>
+    <script>
+        document.body.onload = () => add_on.initializeMainStage();
+    </script>
+</body>
+</html>

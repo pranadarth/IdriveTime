@@ -1,0 +1,14 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Dark Theme Colors -->
+    <SolidColorBrush x:Key="PrimaryBackground" Color="#252526" />
+    <SolidColorBrush x:Key="SecondaryBackground" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="PrimaryForeground" Color="White" />
+    <SolidColorBrush x:Key="TextBoxBackground" Color="#333" />
+    <SolidColorBrush x:Key="ButtonBackground" Color="#FF9800" />
+    <SolidColorBrush x:Key="ButtonHoverBackground" Color="#464747" />
+    <SolidColorBrush x:Key="BorderBrushColor" Color="Gray" />
+    <SolidColorBrush x:Key="ScrollThumbColor" Color="#505050" />
+    <SolidColorBrush x:Key="ScrollTrackColor" Color="#2D2D2D" />
+    <SolidColorBrush x:Key="PlaceholderForeground" Color="#7F8C8D" />
+</ResourceDictionary>

@@ -1,0 +1,86 @@
+﻿<Window x:Class="ButtonAnimationPoc.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ButtonAnimationPoc" MouseLeftButtonDown="Window_MouseDown"
+       WindowStyle="None" 
+        ResizeMode="CanResize"
+        Title="MainWindow" Height="450" Width="800">
+    <!--<WindowChrome.WindowChrome>
+        <WindowChrome />
+    </WindowChrome.WindowChrome>-->
+    <Window.Resources>
+
+        <DrawingImage x:Key="_3d_view_iconDrawingImage">
+            <DrawingImage.Drawing>
+                <DrawingGroup ClipGeometry="M0,0 V512 H512 V0 H0 Z">
+                    <GeometryDrawing Brush="#FF000000" Geometry="F1 M512,512z M0,0z M436.631,207.445L436.631,371.126 279.232,462 279.232,298.319 436.631,207.445z M256,258.08L436.201,154.04 256,50 75.799,154.041 256,258.08z M232.768,298.319L75.369,207.445 75.369,371.126 232.768,462 232.768,298.319z" />
+                </DrawingGroup>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <Style x:Key="LoginPageButtonStyle" TargetType="Button">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="MinWidth" Value="100"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Storyboard x:Key="LoadAnime" RepeatBehavior="Forever">
+            <DoubleAnimation Duration="0:0:0.1" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="1" To="1.5" Storyboard.TargetName="r1"  AutoReverse="True"   />
+            <DoubleAnimation Duration="0:0:0.1" BeginTime="0:0:0.1" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="1" To="1.5" Storyboard.TargetName="r2"  AutoReverse="True"  />
+            <DoubleAnimation Duration="0:0:0.1" BeginTime="0:0:0.2"  Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="1" To="1.5" Storyboard.TargetName="r3"  AutoReverse="True"  />
+        </Storyboard>
+        <Storyboard x:Key="MoveAnime">
+            <DoubleAnimation Duration="0:0:0.2" From="-100" To="0" Storyboard.TargetName="AnimeGrid" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" />
+        </Storyboard>
+    </Window.Resources>
+    <Grid>
+        <DockPanel Height="30" Background="DeepSkyBlue" Name="ManualBorder" VerticalAlignment="Top" MouseRightButtonDown="ManualBorder_MouseRightButtonDown" Margin="0 0"/>
+        <Button Width="250" Height="40"  FontWeight="Bold" Style="{StaticResource LoginPageButtonStyle}"
+                FontSize="18" Foreground="White" Background="DeepSkyBlue" Click="Button_Click">
+            <!--<Button.Effect>
+                <DropShadowEffect BlurRadius="1000"  ShadowDepth="10"/>
+            </Button.Effect>-->
+            <Grid>
+                <TextBlock x:Name="LoginText" Text="LOGIN" Visibility="Collapsed" />
+                <Grid x:Name="AnimeGrid" Visibility="Collapsed">
+                    <Grid.RenderTransform>
+                        <TranslateTransform />
+                    </Grid.RenderTransform>
+                    <Rectangle x:Name="r1" RenderTransformOrigin="0.5,0.5"  Width="5" Height="15"  Fill="White"  HorizontalAlignment="Left" Margin="5,0">
+                        <Rectangle.RenderTransform>
+                            <ScaleTransform />
+                        </Rectangle.RenderTransform>
+                    </Rectangle>
+                    <Rectangle x:Name="r2"  RenderTransformOrigin="0.5,0.5" Width="5" Height="15" Fill="White" HorizontalAlignment="Left"  Margin="12,0">
+                        <Rectangle.RenderTransform>
+                            <ScaleTransform  />
+                        </Rectangle.RenderTransform>
+                    </Rectangle>
+                    <Rectangle x:Name="r3"  RenderTransformOrigin="0.5,0.5" Width="5" Height="15" Fill="White" HorizontalAlignment="Left"  Margin="19,0">
+                        <Rectangle.RenderTransform>
+                            <ScaleTransform />
+                        </Rectangle.RenderTransform>
+                    </Rectangle>
+                </Grid>
+            </Grid>
+        </Button>
+        <Image Source="{StaticResource _3d_view_iconDrawingImage}" Width="24" Height="24" Margin="100" VerticalAlignment="Top" />
+    
+    </Grid>
+</Window>

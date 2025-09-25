@@ -1,0 +1,322 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RemotePC Launcher</title>
+    <style>
+        :root {
+            --rpc-bg: #ffffff;
+            --rpc-muted: #5f6368;
+            --rpc-primary: #1a73e8;
+            --rpc-radius: 12px;
+            --rpc-shadow: 0 12px 40px rgba(13, 37, 63, 0.18);
+        }
+
+        /* Ensure body and html take up full height and have no extra margin */
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: 'Google Sans', Arial, sans-serif;
+            background: #F5F5F5;
+        }
+
+        /* --- LAYOUT FIX for Side Panel --- */
+        /* The main container should be flexible and fill the available space */
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            position: relative;
+            box-sizing: border-box; /* Include padding in width calculation */
+            width: 100%;
+            height: 100%;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 8px;
+            flex-shrink: 0; /* Prevent logo from shrinking */
+        }
+
+        .app-name {
+            font-size: 20px;
+            margin-bottom: 16px;
+            color: #333;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            color: #fff;
+            background-color: var(--rpc-primary);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 12px;
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
+            width: 100%; /* Make buttons full-width */
+            max-width: 300px; /* But not too wide */
+        }
+
+            .btn:hover {
+                box-shadow: 0 4px 12px rgba(26, 115, 232, 0.25);
+            }
+
+        .msg {
+            font-size: 13px;
+            color: #555;
+            text-align: center;
+            margin-bottom: 12px;
+            max-width: 300px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .signout-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            border: none;
+            background: rgba(0,0,0,0.04);
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: inset 0 -1px 0 rgba(255,255,255,0.5);
+            transition: background 0.15s ease, transform 0.08s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+            .signout-btn:hover {
+                background: rgba(0,0,0,0.1);
+                transform: translateY(-1px);
+            }
+
+            .signout-btn:active {
+                transform: translateY(0);
+            }
+
+        .signout-icon {
+            width: 20px;
+            height: 20px;
+            fill: #5f6368;
+            pointer-events: none;
+        }
+
+        /* --- MODAL FIX for Side Panel --- */
+
+        .rpc-confirm-overlay {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: rgba(32, 33, 36, 0.28);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.18s ease;
+            padding: 20px; /* important: outer breathing room */
+            pointer-events: none;
+            box-sizing: border-box;
+        }
+
+        .rpc-confirm-overlay:not(.hidden) {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .rpc-confirm-card {
+            /* desired max visual width for the card */
+            --cardMax: 360px;
+            /* card width will be the smaller of cardMax or (viewport width - 48px gutters) */
+            width: min(var(--cardMax), calc(100% - 48px));
+            max-width: var(--cardMax);
+            margin: 0 auto; /* center horizontally inside the overlay */
+            background: var(--rpc-bg);
+            border-radius: var(--rpc-radius);
+            padding: 22px;
+            box-shadow: var(--rpc-shadow);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            transform: scale(0.98);
+            transition: transform 0.18s cubic-bezier(.2,.9,.3,1), opacity 0.18s ease;
+            box-sizing: border-box; /* important so padding is included in width */
+        }
+
+        .rpc-confirm-overlay:not(.hidden) .rpc-confirm-card {
+            transform: translateY(-4px) scale(1);
+            opacity: 1;
+        }
+
+        .rpc-confirm-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background-color: #e8f0fe;
+            display: grid;
+            place-items: center;
+            color: var(--rpc-primary);
+            flex-shrink: 0;
+        }
+
+        .rpc-confirm-icon svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .rpc-confirm-content {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .rpc-confirm-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #202124;
+        }
+
+        .rpc-confirm-msg {
+            font-size: 14px;
+            color: var(--rpc-muted);
+            line-height: 1.5;
+            margin-bottom: 0;
+        }
+
+        .rpc-confirm-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .rpc-confirm-btn {
+            flex-grow: 1;
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .rpc-confirm-btn.primary {
+            background: var(--rpc-primary);
+            color: #fff;
+        }
+
+        .rpc-confirm-btn.primary:hover {
+            box-shadow: 0 4px 12px rgba(26, 115, 232, 0.25);
+        }
+
+        .rpc-confirm-btn.ghost {
+            background: #e8eaed;
+            color: var(--rpc-muted);
+        }
+
+        .rpc-confirm-btn.ghost:hover {
+            background: #dee1e6;
+        }
+
+        @media (max-width: 360px) {
+            .rpc-confirm-card {
+                padding: 16px;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+  <body>
+    <div class="container">
+        <!-- sign-out placed top-right -->
+        <button id="signOutBtn" class="signout-btn" title="Sign out">
+            <svg viewBox="0 0 24 24" class="signout-icon" xmlns="http://www.w3.org/2000/svg">
+                <path d="M16 13v-2H7V8l-5 4 5 4v-3h9zm3-10H5c-1.1 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z" />
+            </svg>
+            <span class="signout-text">Sign out</span>
+        </button>
+
+        <img src=".\logo.png" class="logo" alt="RemotePC Logo" />
+        <div class="app-name">RemotePC</div>
+        <div id="hostMsg" class="msg hidden">Please ask participants to join the activity.</div>
+
+        <!-- UI Elements -->
+        <button id="signInBtn" class="btn hidden">Sign In</button>
+        <button id="startActivityBtn" class="btn hidden">Start Activity</button>
+        <button id="createSessionBtn" class="btn hidden">Create a Session</button>
+        <div id="participantMsg" class="msg hidden">
+            Please download the required application to initialize the session.
+        </div>
+        <button id="downloadBtn" class="btn hidden">Download App</button>
+        <div id="warnMsg" class="msg hidden">
+            A session is already in progress. Please click “Join activity” above to participate.
+        </div>
+    </div>
+
+    <!-- Enhanced Confirmation Modal -->
+    <div id="rpcConfirmOverlay" class="rpc-confirm-overlay hidden" aria-hidden="true">
+        <div class="rpc-confirm-card" role="alertdialog" aria-labelledby="rpcConfirmTitle" aria-describedby="rpcConfirmMsg">
+
+            <div class="rpc-confirm-icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                </svg>
+            </div>
+
+            <div class="rpc-confirm-content">
+                <h2 id="rpcConfirmTitle" class="rpc-confirm-title">Confirm Sign Out</h2>
+                <p id="rpcConfirmMsg" class="rpc-confirm-msg">Are you sure you want to sign out?</p>
+            </div>
+
+            <div class="rpc-confirm-actions">
+                <button id="rpcConfirmNo" class="rpc-confirm-btn ghost">Cancel</button>
+                <button id="rpcConfirmYes" class="rpc-confirm-btn primary">Yes, Sign Out</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="bundle.js"></script>
+    <script>
+        const signOutBtn = document.getElementById('signOutBtn');
+        const confirmOverlay = document.getElementById('rpcConfirmOverlay');
+        const confirmNoBtn = document.getElementById('rpcConfirmNo');
+        const confirmYesBtn = document.getElementById('rpcConfirmYes');
+
+        signOutBtn.addEventListener('click', () => {
+            confirmOverlay.classList.remove('hidden');
+            confirmOverlay.setAttribute('aria-hidden', 'false');
+            // put focus on the yes button for keyboard users
+            confirmYesBtn.focus();
+        });
+
+        function hideModal() {
+            confirmOverlay.classList.add('hidden');
+            confirmOverlay.setAttribute('aria-hidden', 'true');
+        }
+
+        confirmNoBtn.addEventListener('click', hideModal);
+
+        // IMPORTANT: do NOT do logout here — dispatch an event and let app logic handle signout
+        confirmYesBtn.addEventListener('click', () => {
+            hideModal();
+            // dispatch a global event the side-panel logic will listen for
+            window.dispatchEvent(new CustomEvent('rpcSignOutConfirmed', { bubbles: true }));
+        });
+
+        // keep your add_on init call
+        document.body.onload = () => add_on.setUpSidePanel();
+    </script>
+</body>
+</html>

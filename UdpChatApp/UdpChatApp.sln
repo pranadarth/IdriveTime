@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35312.102
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UdpChatApp", "UdpChatApp\UdpChatApp.csproj", "{31221891-AFA9-4020-B698-B6A3FD6C2494}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{31221891-AFA9-4020-B698-B6A3FD6C2494}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{31221891-AFA9-4020-B698-B6A3FD6C2494}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{31221891-AFA9-4020-B698-B6A3FD6C2494}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{31221891-AFA9-4020-B698-B6A3FD6C2494}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4B74F505-591A-4F6B-B794-16CBE8DE2368}
+	EndGlobalSection
+EndGlobal

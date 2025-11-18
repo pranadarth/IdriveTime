@@ -14,7 +14,7 @@ export async function setUpSidePanel() {
     const startingState = await client.getActivityStartingState().catch(() => ({}));
     const isSessionStarted = Boolean(startingState.additionalData);
 
-    // 2a. Parse additionalData (robustly)
+    // 2a. Parse additionalData
     let startingPayload = null;
     if (startingState && typeof startingState.additionalData === 'string' && startingState.additionalData.trim()) {
         try {
@@ -180,7 +180,7 @@ export async function setUpSidePanel() {
 
         if (!copyBtn || !valueEl) return;
 
-        // remove prior listeners robustly
+        // remove prior listeners 
         const freshBtn = copyBtn.cloneNode(true);
         copyBtn.parentNode.replaceChild(freshBtn, copyBtn);
 
@@ -428,10 +428,18 @@ export async function setUpSidePanel() {
                 clientId
             });
 
-            await client.startActivity({
-                sidePanelUrl: 'https://meet-addon-hosting-32017.web.app/SidePanel.html',
-                additionalData // string only
-            });
+            try {
+                await client.startActivity({
+                    sidePanelUrl: 'https://meet-addon-hosting-32017.web.app/SidePanel.html',
+                    additionalData
+                });
+            } catch (err) {
+                if (!/single instance|already active/i.test(err.message)) {
+                    console.error('HOST: startActivity failed', err);
+                } else {
+                    console.log('HOST: activity already active — ignoring duplicate start');
+                }
+            }
 
             // 3) persist locally for future checks & update UI
             localStorage.setItem('RemotePC_Initiator', userEmail);
@@ -481,7 +489,12 @@ export async function setUpSidePanel() {
         if (els.participantMsg) els.participantMsg.classList.remove('hidden');
         if (els.downloadBtn) {
             els.downloadBtn.onclick = () => {
-                window.open('https://meet-addon-hosting-32017.web.app/DownloadRedirect.html', '_blank');
+                const clientId = sessionClientIdFromPayload || localStorage.getItem('RemotePC_SessionClientId') || '';
+                const params = new URLSearchParams();
+                if (clientId) params.set('clientId', clientId);
+                const url = 'https://meet-addon-hosting-32017.web.app/DownloadRedirect.html' + (params.toString() ? ('?' + params.toString()) : '');
+                console.log('DOWNLOAD: opening', url);
+                window.open(url, '_blank');
             };
         }
     }

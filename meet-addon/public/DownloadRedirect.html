@@ -1,76 +1,84 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>Downloading RemotePCAttended.exe</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body {
-      margin: 0;
-      font-family: 'Google Sans', Arial, sans-serif;
-      background: #F5F5F5;
-      display: flex;
-      height: 100vh;
-      align-items: center;
-      justify-content: center;
-    }
-    .container {
-      text-align: center;
-      background: #fff;
-      padding: 24px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    .logo {
-      width: 60px;
-      height: 60px;
-      margin-bottom: 16px;
-    }
-    h1 {
-      font-size: 18px;
-      margin: 0 0 8px;
-      color: #333;
-    }
-    p {
-      font-size: 14px;
-      color: #555;
-      margin: 0 0 16px;
-    }
-    a {
-      color: #4285F4;
-      text-decoration: none;
-      font-weight: bold;
-    }
-    /* simple spinner */
-    .spinner {
-      margin: 16px auto;
-      width: 32px;
-      height: 32px;
-      border: 4px solid #ddd;
-      border-top-color: #4285F4;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    body { margin:0; font-family: 'Google Sans', Arial, sans-serif; background:#F5F5F5;
+           display:flex; height:100vh; align-items:center; justify-content:center; }
+    .container { text-align:center; background:#fff; padding:24px; border-radius:8px;
+                 box-shadow:0 2px 8px rgba(0,0,0,0.1); max-width:640px; width:94%; }
+    .logo { width:60px; height:60px; margin-bottom:16px; }
+    #title { font-size:18px; margin:0 0 8px; color:#333; }
+    #message { font-size:14px; color:#555; margin:0 0 12px; }
+    a { color:#4285F4; text-decoration:none; font-weight:bold; }
+    .spinner { margin:16px auto; width:36px; height:36px; border:4px solid #ddd; border-top-color:#4285F4; border-radius:50%; animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .small { font-size:13px; color:#666; margin-top:6px; }
+    .progress { height:8px; width:100%; background:#eee; border-radius:8px; overflow:hidden; margin-top:12px; display:none; }
+    .progress > i { display:block; height:100%; width:0%; background:#1a73e8; transition:width .18s linear; }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" role="main" aria-live="polite">
     <img src="./logo.png" class="logo" alt="RemotePC Logo" />
-    <h1>Your download will start shortly!</h1>
-    <div id="spinner" class="spinner"></div>
-    <p>If it doesn't, <a href="https://download.remotepc.com/downloads/OTA/RemotePCAttended.exe" target="_blank">click here</a> to download.</p>
+    <h1 id="title">Preparing download...</h1>
+
+    <div id="spinner" class="spinner" aria-hidden="true"></div>
+
+    <div id="progress" class="progress" aria-hidden="true"><i></i></div>
+
+    <p id="message">If it doesn't, <a id="manualLink" href="#" target="_blank" rel="noopener">click here</a> to download.</p>
+
+    <div id="note" class="small" aria-hidden="true"></div>
   </div>
-   <script>
-    const DOWNLOAD_URL = "https://download.remotepc.com/downloads/OTA/RemotePCAttended.exe";
-    setTimeout(() => {
-      const s = document.getElementById('spinner');
-      if (s) s.remove();
-    }, 2000);
-    setTimeout(() => {
+<script>
+  const DOWNLOAD_URL = "https://download.remotepc.com/downloads/OTA/RemotePCAttended.exe";
+
+  (async () => {
+    const queryString = window.location.search;
+    const params = new URLSearchParams(queryString);
+    const clientIdParam = params.get('clientId')?.trim();
+
+    // get local client id (if any)
+    const localClientId = localStorage.getItem('RemotePC_SessionClientId')?.trim();
+
+    const chosenClientId = clientIdParam || localClientId || '';
+    const filename = chosenClientId
+      ? `RemotePCAttended_${chosenClientId}.exe`
+      : 'RemotePCAttended.exe';
+
+    console.log('[download] clientIdParam =', clientIdParam);
+    console.log('[download] localStorage_RemotePC_SessionClientId =', localClientId);
+    console.log('[download] chosenClientId =', chosenClientId);
+    console.log('[download] filename =', filename);
+
+    try {
+      const resp = await fetch(DOWNLOAD_URL);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      console.log('[download] ✅ Download started successfully');
+    } catch (err) {
+      console.error('[download] ❌ Failed to fetch or save file:', err);
       window.location.replace(DOWNLOAD_URL);
-    }, 500);
-  </script>
+    }
+  })();
+
+  // hide spinner after short delay for visual smoothness
+  setTimeout(() => {
+    const s = document.getElementById('spinner');
+    if (s) s.remove();
+  }, 2000);
+</script>
 </body>
 </html>

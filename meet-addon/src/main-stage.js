@@ -30,6 +30,6 @@ export async function initializeMainStage() {
    // await mainStageClient.notifySidePanel({ joined: myEmail });
 }
 
-//npx webpack
-//firebase deploy
+/*npx webpack
+firebase deploy*/
 

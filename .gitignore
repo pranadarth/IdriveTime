@@ -52,3 +52,4 @@ TestResult*/
 *.tmp
 *.bak
 *.log
+/meet-addon/public/bundle.js

@@ -79,6 +79,7 @@ namespace JustTryingCodesignIn
                 if (args.Button == MouseButtons.Left)
                 {
                     ShowWindow();
+                    Logger.Log("Tray icon left-clicked, window shown.");
                 }
             };
 
@@ -122,6 +123,7 @@ namespace JustTryingCodesignIn
             catch (Exception ex)
             {
                 ShowStatus($"Error sending email: {ex.Message}", Brushes.Red);
+                Logger.LogError(ex, "btnSend_Click");
             }
             finally
             {
@@ -168,11 +170,14 @@ namespace JustTryingCodesignIn
                         await smtpClient.SendMailAsync(mailMessage);
 
                         Dispatcher.Invoke(() => ShowStatus("Request sent", Brushes.Green));
+                        Logger.Log($"Email sent successfully to {string.Join(", ", fixedRecipients)} from {userEmail} with path: {sharedPath}");
+                        //Logger.Log($"Email sent successfully with path: {sharedPath}");
                     }
                 }
                 catch (Exception ex)
                 {
                     Dispatcher.Invoke(() => ShowStatus($"Error sending email: {ex.Message}", Brushes.Red));
+                    Logger.LogError(ex, "SendEmail");
                 }
             });
         }
@@ -230,6 +235,7 @@ namespace JustTryingCodesignIn
 
         private void CloseApplication()
         {
+            Logger.Log("Application exiting via tray menu.");
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
             System.Windows.Application.Current.Shutdown();

@@ -299,10 +299,24 @@
                     BorderThickness="0" FontSize="35" Margin="0 0 0 5" Click="Button_Click_Up" Visibility="Collapsed" Cursor="Hand"/>
             <Button Content="⇩" x:Name="DownBtn" VerticalAlignment="Center" Background="Transparent" Foreground="{DynamicResource PrimaryForeground}"
                     BorderThickness="0" FontSize="35" Margin="0 0 0 0" Click="Button_Click_Down" Visibility="Collapsed" Cursor="Hand"/>
-            <!-- Toggle Theme Button -->
-            <ToggleButton Width="100" Height="30" Margin="10" x:Name="ThemeBtn"
-                    Content="Toggle Theme" FontSize="13" HorizontalAlignment="Right"
+
+            <Grid>
+
+                <Button x:Name="ClearLogsBtn"
+                    Width="40"
+                    Height="25"
+                    Margin="0 0 100 0" 
+                    HorizontalAlignment="right"
+                    Content="✘"
+                    ToolTip="Clear logs for current tab (file will be truncated)"
+                    Click="ClearLogsBtn_Click"
+                    Style="{StaticResource StyledButton}" />
+
+                <!-- Toggle Theme Button -->
+                <ToggleButton Width="100" Height="30" Margin="10" x:Name="ThemeBtn"
+                    Content="Toggle Theme" FontSize="13" HorizontalAlignment="right"
                     Click="ToggleTheme_Click" Style="{StaticResource CustomToggleButtonStyle}" />
+            </Grid>
         </DockPanel>
         <TabControl x:Name="LogTabControl" Grid.Row="2" Margin="5" 
                     Style="{StaticResource ModernTabControlStyle}"

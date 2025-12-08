@@ -97,17 +97,22 @@ namespace LiveLogs
 
             logTextBox.ItemsSource = newLogTab.LogLines;
 
-            
+
             newTab.Tag = newLogTab;
 
-            
+
             FileSystemWatcher watcher = new FileSystemWatcher
             {
                 Path = System.IO.Path.GetDirectoryName(filePath),
                 Filter = System.IO.Path.GetFileName(filePath),
-                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
             };
-            watcher.Changed +=  (s, e) =>  Dispatcher.InvokeAsync(() => ReadNewLines(newLogTab));
+
+            watcher.Changed += (s, e) => Dispatcher.InvokeAsync(() => ReadNewLines(newLogTab));
+            watcher.Created += (s, e) => Dispatcher.InvokeAsync(() => OnLogCreated(newLogTab));
+            watcher.Deleted += (s, e) => Dispatcher.InvokeAsync(() => OnLogDeleted(newLogTab));
+            watcher.Renamed += (s, e) => Dispatcher.InvokeAsync(() => OnLogRenamed(newLogTab, e));
+
             watcher.EnableRaisingEvents = true;
             newLogTab.Watcher = watcher;
 
@@ -119,13 +124,55 @@ namespace LiveLogs
 
         }
 
+        private void OnLogDeleted(LogTab tab)
+        {
+            // file is deleted: clear UI and reset state
+            tab.LogLines.Clear();
+            tab.LastPosition = 0;
+        }
+
+        private void OnLogCreated(LogTab tab)
+        {
+            // file re-created: reset and read from start
+            tab.LastPosition = 0;
+            ReadNewLines(tab);
+        }
+
+        private void OnLogRenamed(LogTab tab, RenamedEventArgs e)
+        {
+            // if the file was renamed back to the same name, update path.
+            // e.FullPath is the new name. If you need to follow rename, set FilePath
+            // Here: update if the watched filename changed to something else
+            // If file was rotated and new file has same name, Created will handle it;
+            // if rotated by renaming original->backup and a new file created, Created + Deleted sequence comes.
+            if (File.Exists(tab.FilePath) == false)
+            {
+                // if the file was renamed away, clear
+                tab.LogLines.Clear();
+                tab.LastPosition = 0;
+            }
+            else
+            {
+                // if new file exists at same path, read it
+                tab.LastPosition = 0;
+                ReadNewLines(tab);
+            }
+        }
+
         private void  ReadNewLines(LogTab logTab)
         {
             try
             {
+                if (!File.Exists(logTab.FilePath))
+                {
+                    return;
+                }
                 using (var stream = new FileStream(logTab.FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 using (var reader = new StreamReader(stream, Encoding.UTF8))
                 {
+                    if (stream.Length < logTab.LastPosition)
+                        logTab.LastPosition = 0;
+
                     stream.Seek(logTab.LastPosition, SeekOrigin.Begin);
                     string newContent =  reader.ReadToEnd();
                     logTab.LastPosition = stream.Position;
@@ -135,22 +182,6 @@ namespace LiveLogs
                         Application.Current.Dispatcher.Invoke(() =>
                         {
                             logTab.AppendLog(newContent);
-
-                            //// Use a timer to throttle UI updates
-                            //if (logTab.UpdateTimer == null)
-                            //{
-                            //    logTab.UpdateTimer = new DispatcherTimer
-                            //    {
-                            //        Interval = TimeSpan.FromMilliseconds(250)
-                            //    };
-                            //    logTab.UpdateTimer.Tick += (s, e) =>
-                            //    {
-                            //        logTab.UpdateTimer.Stop();
-                            //        ApplyFilterToLogTab(logTab);
-                            //    };
-                            //}
-                            //logTab.UpdateTimer.Stop();
-                            //logTab.UpdateTimer.Start();
                         });
                     }
                 }
@@ -172,16 +203,6 @@ namespace LiveLogs
                 logTab.LogTextBox.SelectedIndex = -1;
                 return;
             }
-            /* else
-             {
-                 var filteredLines = logTab.LogLines.Where(line => line.ToLower().Contains(searchQuery)).ToList();
-                 //logTab.LogTextBox.ItemsSource = filteredLines;
-             }
-
-             if (logTab.LogTextBox.Items.Count > 0)
-             {
-                 logTab.LogTextBox.ScrollIntoView(logTab.LogTextBox.Items[logTab.LogTextBox.Items.Count - 1]);
-             }*/
 
             for (int i = 0; i < logTab.LogLines.Count; i++)
             {
@@ -415,6 +436,52 @@ namespace LiveLogs
             var _currentLogTab = (LogTabControl.SelectedItem as TabItem).Tag as LogTab;
             _currentMatchPosition = (_currentMatchPosition + 1 + _matchIndices.Count) % _matchIndices.Count;
             NavigateToMatch(_currentLogTab, _matchIndices[_currentMatchPosition]);
+        }
+
+        private void ClearLogsBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(LogTabControl.SelectedItem is TabItem selectedTab) || !(selectedTab.Tag is LogTab logTab))
+            {
+                MessageBox.Show("No log tab is selected.", "Clear Logs", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Confirm
+            var result = MessageBox.Show($"This will clear the file:\n\n{logTab.FilePath}\n\nAre you sure?",
+                                         "Clear Logs", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                // Try to truncate/overwrite the file safely
+                // This will create the file if it doesn't exist, or overwrite if it does.
+                File.WriteAllText(logTab.FilePath, string.Empty);
+
+                // Reset our tracking state so we don't continue from old position
+                logTab.LastPosition = 0;
+
+                // Clear UI content
+                logTab.LogLines.Clear();
+
+                // If watcher exists, let it continue watching (it will see file change)
+                // Optionally re-read new content (there will be none)
+                ReadNewLines(logTab);
+               
+            }
+            catch (UnauthorizedAccessException)
+            {
+                MessageBox.Show("Access denied while trying to clear the file. Try running the app with elevated permissions or close any program locking the file.",
+                                "Clear Logs - Permission Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch (IOException ioEx)
+            {
+                MessageBox.Show("I/O error while clearing the file: " + ioEx.Message + "\n\nMake sure the file isn't locked by another process.",
+                                "Clear Logs - IO Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Unexpected error: " + ex.Message, "Clear Logs - Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 }

@@ -15,6 +15,17 @@ class MemoryLogger
     {
         Console.WriteLine("Enter the name of the application to track (without .exe):");
         string appName = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(appName))
+        {
+            Console.WriteLine("Application name cannot be empty. Exiting.");
+            return;
+        }
+
+        appName = appName.Trim();
+        if (appName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            appName = appName[..^4];
+        }
 
         // Set the log file path in the Documents folder with the application name
         string documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);

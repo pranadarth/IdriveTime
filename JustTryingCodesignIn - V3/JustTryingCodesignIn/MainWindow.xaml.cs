@@ -312,8 +312,8 @@ namespace JustTryingCodesignIn
 
             var text = System.Windows.Clipboard.GetText().Trim();
 
-            // Regex: starts with \\192.168.3.61\ and then at least one character
-            var pattern = @"^\\\\192\.168\.3\.61\\.+";
+            /// Regex: starts with \\192.168. and then at least one character
+            var pattern = @"^\\\\192\.168\..+";
             if (System.Text.RegularExpressions.Regex.IsMatch(text, pattern))
             {
                 txtSharedPath.Text = text;

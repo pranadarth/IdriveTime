@@ -52,5 +52,6 @@ TestResult*/
 *.tmp
 *.bak
 *.log
-/meet-addon/public/bundle.js
+
 /JustTryingCodesignIn - V3/JustTryingCodesignIn/credentials.json
+/meet-addon/public/bundle.js

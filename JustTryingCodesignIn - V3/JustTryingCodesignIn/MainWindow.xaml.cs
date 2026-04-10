@@ -33,7 +33,7 @@ namespace JustTryingCodesignIn
         // Fixed recipient email addresses
         private readonly string[] fixedRecipients = new string[]
         {
-            "automation.remotepc@gmail.com","remotepc.automation2@gmail.com"
+            "automation.remotepc@gmail.com"
             //"darths1110@gmail.com"
         };
         private NotifyIcon _trayIcon;

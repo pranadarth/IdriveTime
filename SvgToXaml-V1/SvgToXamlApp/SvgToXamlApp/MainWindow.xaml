@@ -1,0 +1,115 @@
+﻿<Window x:Class="SvgToXamlApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SvgToXamlApp"
+        xmlns:svgc="http://sharpvectors.codeplex.com/svgc/"
+                Title="SVG to XAML Converter - Developer Tool" 
+        Height="750" Width="1100" MinWidth="850" MinHeight="550"
+        WindowStartupLocation="CenterScreen" Background="#FFF5F6F8">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300" MinWidth="250"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="White" BorderBrush="#E0E0E0" BorderThickness="0,0,1,0">
+            <Grid Margin="15">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="5"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="📁 Browse Folder" Click="BtnBrowse_Click" Height="35" 
+                            Background="#0078D7" Foreground="White" FontWeight="Bold" Cursor="Hand" BorderThickness="0"/>
+
+                    <Button Grid.Column="2" Content="Export All" Click="BtnExportAll_Click" Height="35" Padding="15,0"
+                            Background="#28A745" Foreground="White" FontWeight="Bold" Cursor="Hand" BorderThickness="0"
+                            ToolTip="Export all SVGs in this folder into a single ResourceDictionary XAML file."/>
+                </Grid>
+
+                <TextBlock x:Name="TxtCurrentFolder" Grid.Row="1" Margin="0,10,0,10" 
+                           Text="No folder selected" Foreground="#666666" TextWrapping="Wrap" FontSize="11"/>
+
+                <ListBox x:Name="LstFiles" Grid.Row="2" SelectionChanged="LstFiles_SelectionChanged"
+                         DisplayMemberPath="Name" BorderBrush="#E0E0E0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="8,8"/>
+                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                            <Setter Property="BorderBrush" Value="#F0F0F0"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#F0F8FF"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#CCE8FF"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="15">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="2*"/>
+                <RowDefinition Height="5"/>
+                <RowDefinition Height="1.5*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4">
+                <Border.Background>
+                    <DrawingBrush Viewport="0,0,20,20" ViewportUnits="Absolute" TileMode="Tile">
+                        <DrawingBrush.Drawing>
+                            <DrawingGroup>
+                                <GeometryDrawing Brush="White" Geometry="M0,0 L20,0 20,20 0,20Z" />
+                                <GeometryDrawing Brush="#EAEAEA" Geometry="M0,0 L10,0 10,10 0,10Z M10,10 L20,10 20,20 10,20Z" />
+                            </DrawingGroup>
+                        </DrawingBrush.Drawing>
+                    </DrawingBrush>
+                </Border.Background>
+                <Grid>
+                    <TextBlock Text="Select an SVG file to preview" Foreground="#999999" FontSize="16" 
+                               HorizontalAlignment="Center" VerticalAlignment="Center" x:Name="TxtPlaceholder"/>
+                    <svgc:SvgViewbox x:Name="SvgPreview" Stretch="Uniform" Margin="20"/>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" Background="Transparent" Cursor="SizeNS"/>
+
+            <Border Grid.Row="2" Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Background="#F9F9F9" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="10,5">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Copy XAML" Click="BtnCopy_Click" Padding="15,5" Background="White" BorderBrush="#CCCCCC" Cursor="Hand"/>
+                            <Button Content="Save as .xaml" Click="BtnSave_Click" Padding="15,5" Margin="10,0,0,0" Background="White" BorderBrush="#CCCCCC" Cursor="Hand"/>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBox x:Name="TxtXamlCode" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True" 
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                             FontFamily="Consolas" FontSize="12" Padding="10" BorderThickness="0" Background="#FAFAFA"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

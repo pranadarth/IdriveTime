@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿ <!-- SidePanel.html -->
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -126,10 +127,10 @@
             box-sizing: border-box;
         }
 
-        .rpc-confirm-overlay:not(.hidden) {
-            opacity: 1;
-            pointer-events: auto;
-        }
+            .rpc-confirm-overlay:not(.hidden) {
+                opacity: 1;
+                pointer-events: auto;
+            }
 
         .rpc-confirm-card {
             /* desired max visual width for the card */
@@ -168,10 +169,10 @@
             flex-shrink: 0;
         }
 
-        .rpc-confirm-icon svg {
-            width: 24px;
-            height: 24px;
-        }
+            .rpc-confirm-icon svg {
+                width: 24px;
+                height: 24px;
+            }
 
         .rpc-confirm-content {
             display: flex;
@@ -211,23 +212,23 @@
             transition: background-color 0.15s ease, box-shadow 0.15s ease;
         }
 
-        .rpc-confirm-btn.primary {
-            background: var(--rpc-primary);
-            color: #fff;
-        }
+            .rpc-confirm-btn.primary {
+                background: var(--rpc-primary);
+                color: #fff;
+            }
 
-        .rpc-confirm-btn.primary:hover {
-            box-shadow: 0 4px 12px rgba(26, 115, 232, 0.25);
-        }
+                .rpc-confirm-btn.primary:hover {
+                    box-shadow: 0 4px 12px rgba(26, 115, 232, 0.25);
+                }
 
-        .rpc-confirm-btn.ghost {
-            background: #e8eaed;
-            color: var(--rpc-muted);
-        }
+            .rpc-confirm-btn.ghost {
+                background: #e8eaed;
+                color: var(--rpc-muted);
+            }
 
-        .rpc-confirm-btn.ghost:hover {
-            background: #dee1e6;
-        }
+                .rpc-confirm-btn.ghost:hover {
+                    background: #dee1e6;
+                }
 
         @media (max-width: 360px) {
             .rpc-confirm-card {
@@ -237,7 +238,7 @@
         }
     </style>
 </head>
-  <body>
+<body>
     <div class="container">
         <!-- sign-out placed top-right -->
         <button id="signOutBtn" class="signout-btn" title="Sign out">

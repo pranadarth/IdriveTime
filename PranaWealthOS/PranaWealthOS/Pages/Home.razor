@@ -1,0 +1,178 @@
+﻿@page "/"
+@using MudBlazor
+@using PranaWealthOS.Models
+@using ExcelDataReader
+@using System.Data
+@using System.Text
+
+<PageTitle>Wealth OS Dashboard</PageTitle>
+
+<div class="container mt-4" style="font-family: 'Inter', sans-serif;">
+    <h2 class="mb-4 text-primary">💰 Pranav's Wealth OS</h2>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="p-4 border-dashed rounded bg-light text-center">
+                <label class="form-label fw-bold">Upload Stocks XLSX</label>
+                <InputFile OnChange="HandleStockUpload" class="form-control" />
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="p-4 border-dashed rounded bg-light text-center">
+                <label class="form-label fw-bold">Upload Mutual Funds XLSX</label>
+                <InputFile OnChange="HandleMFUpload" class="form-control" />
+            </div>
+        </div>
+    </div>
+
+    @if (TotalNetWorth > 0)
+    {
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <MudPaper Class="pa-4 shadow-sm" Style="border-radius:15px;">
+                    <MudText Typo="Typo.h6" Class="mb-4">Asset Allocation</MudText>
+                    <MudChart T="double"
+                              ChartType="ChartType.Donut"
+                              InputData="@ChartData"
+                              InputLabels="@ChartLabels"
+                              Width="100%" Height="300px" />
+                </MudPaper>
+            </div>
+
+            <div class="col-md-6">
+                 <MudPaper Class="pa-4 shadow-sm h-100" Style="border-radius:15px; background-color: #f0f7ff;">
+                    <MudText Typo="Typo.subtitle1" Color="Color.Primary">Total Net Worth</MudText>
+                    <MudText Typo="Typo.h3" Class="fw-bold">₹@TotalNetWorth.ToString("N0")</MudText>
+                    <hr />
+                    <MudText Typo="Typo.body1">🚀 <b>Equity Wealth:</b> ₹@EquityWealth.ToString("N0")</MudText>
+                    <MudText Typo="Typo.body1">🎯 <b>Bond Goal:</b> ₹@BondSavings.ToString("N0") (@BondGoalPercentage.ToString("F1")%)</MudText>
+                 </MudPaper>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm">
+                    <h5>Stocks (@Stocks.Count)</h5>
+                    <table class="table table-sm">
+                        <thead><tr><th>Name</th><th class="text-end">Value</th></tr></thead>
+                        <tbody>
+                            @foreach (var s in Stocks.OrderByDescending(x => x.ClosingValue).Take(5))
+                            {
+                                <tr><td>@s.StockName</td><td class="text-end">₹@s.ClosingValue.ToString("N0")</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                    <small class="text-muted">Showing top 5 stocks...</small>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm">
+                    <h5>Mutual Funds (@MFs.Count)</h5>
+                    <table class="table table-sm">
+                        <thead><tr><th>Scheme</th><th class="text-end">Value</th></tr></thead>
+                        <tbody>
+                            @foreach (var m in MFs.Where(x => !x.IsShortTermGoal).OrderByDescending(x => x.CurrentValue).Take(5))
+                            {
+                                <tr><td>@m.SchemeName</td><td class="text-end">₹@m.CurrentValue.ToString("N0")</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-warning text-center">
+            👋 Welcome back! Drop your Groww/Broker Excel files above to refresh your wealth data.
+        </div>
+    }
+</div>
+
+@code {
+    private List<StockHolding> Stocks = new();
+    private List<MutualFundHolding> MFs = new();
+
+    private decimal EquityWealth => Stocks.Sum(s => s.ClosingValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue);
+    private decimal BondSavings => MFs.Where(m => m.IsShortTermGoal).Sum(m => m.CurrentValue);
+    private decimal TotalNetWorth => EquityWealth + BondSavings;
+    private decimal BondGoalPercentage => (BondSavings / 110000m) * 100;
+
+    private double[] ChartData => new double[] {
+        (double)Stocks.Sum(s=>s.ClosingValue),
+        (double)MFs.Where(m=>!m.IsShortTermGoal).Sum(m=>m.CurrentValue),
+        (double)BondSavings
+    };
+    private string[] ChartLabels = { "Stocks", "Equity MFs", "Bond Goal" };
+
+    protected override void OnInitialized()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
+
+    private async Task HandleStockUpload(InputFileChangeEventArgs e)
+    {
+        using var stream = e.File.OpenReadStream();
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        ms.Position = 0;
+
+        using var reader = ExcelReaderFactory.CreateReader(ms);
+        var result = reader.AsDataSet();
+        var table = result.Tables[0];
+        bool startReading = false;
+
+        Stocks.Clear();
+        foreach (DataRow row in table.Rows)
+        {
+            string firstCell = row[0]?.ToString();
+            if (firstCell == "Stock Name") { startReading = true; continue; }
+            if (!startReading || string.IsNullOrWhiteSpace(firstCell)) continue;
+
+            // Filter out 'null' bond glitch
+            if (firstCell == "null" || row[1]?.ToString() == "INE342T07577") continue;
+
+            Stocks.Add(new StockHolding
+            {
+                StockName = firstCell,
+                ClosingValue = Convert.ToDecimal(row[6])
+            });
+        }
+        StateHasChanged();
+    }
+
+    private async Task HandleMFUpload(InputFileChangeEventArgs e)
+    {
+        using var stream = e.File.OpenReadStream();
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        ms.Position = 0;
+
+        using var reader = ExcelReaderFactory.CreateReader(ms);
+        var result = reader.AsDataSet();
+        var table = result.Tables[0];
+        bool startReading = false;
+
+        MFs.Clear();
+        foreach (DataRow row in table.Rows)
+        {
+            string firstCell = row[0]?.ToString();
+            if (firstCell == "Scheme Name") { startReading = true; continue; }
+            if (!startReading || string.IsNullOrWhiteSpace(firstCell)) continue;
+
+            MFs.Add(new MutualFundHolding
+            {
+                SchemeName = firstCell,
+                CurrentValue = Convert.ToDecimal(row[8])
+            });
+        }
+        StateHasChanged();
+    }
+}
+
+<style>
+    .border-dashed { border: 2px dashed #dee2e6; transition: all 0.3s; }
+    .border-dashed:hover { border-color: #0d6efd; background-color: #f8f9fa !important; }
+    .card { border: none; border-radius: 12px; }
+</style>

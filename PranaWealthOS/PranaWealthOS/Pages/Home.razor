@@ -1,178 +1,554 @@
 ﻿@page "/"
-@using MudBlazor
+@inject Blazored.LocalStorage.ILocalStorageService LocalStorage
+@inject Supabase.Client SupabaseClient
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthProvider
 @using PranaWealthOS.Models
-@using ExcelDataReader
-@using System.Data
+@using MudBlazor
 @using System.Text
+@using System.Net.Http
+@using System.Text.Json.Nodes
+@using System.Security.Claims
 
 <PageTitle>Wealth OS Dashboard</PageTitle>
 
-<div class="container mt-4" style="font-family: 'Inter', sans-serif;">
-    <h2 class="mb-4 text-primary">💰 Pranav's Wealth OS</h2>
-
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="p-4 border-dashed rounded bg-light text-center">
-                <label class="form-label fw-bold">Upload Stocks XLSX</label>
-                <InputFile OnChange="HandleStockUpload" class="form-control" />
-            </div>
+<div class="container-fluid mt-4" style="font-family: 'Inter', sans-serif; max-width: 1400px;">
+    <div class="mb-6 d-flex flex-wrap justify-space-between align-end gap-4">
+        <div>
+            <h2 class="text-primary m-0 fw-bold d-flex align-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.Dashboard" Size="Size.Large" /> @(Settings?.UserName ?? "User")'s ArthaOne
+            </h2>
+            <MudText Typo="Typo.body2" Class="text-muted mt-1">Your financial command center & live projections.</MudText>
         </div>
-        <div class="col-md-6">
-            <div class="p-4 border-dashed rounded bg-light text-center">
-                <label class="form-label fw-bold">Upload Mutual Funds XLSX</label>
-                <InputFile OnChange="HandleMFUpload" class="form-control" />
-            </div>
-        </div>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/investments">Update Assets</MudButton>
     </div>
 
-    @if (TotalNetWorth > 0)
+    @if (IsSyncingData)
     {
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <MudPaper Class="pa-4 shadow-sm" Style="border-radius:15px;">
-                    <MudText Typo="Typo.h6" Class="mb-4">Asset Allocation</MudText>
-                    <MudChart T="double"
-                              ChartType="ChartType.Donut"
-                              InputData="@ChartData"
-                              InputLabels="@ChartLabels"
-                              Width="100%" Height="300px" />
-                </MudPaper>
-            </div>
-
-            <div class="col-md-6">
-                 <MudPaper Class="pa-4 shadow-sm h-100" Style="border-radius:15px; background-color: #f0f7ff;">
-                    <MudText Typo="Typo.subtitle1" Color="Color.Primary">Total Net Worth</MudText>
-                    <MudText Typo="Typo.h3" Class="fw-bold">₹@TotalNetWorth.ToString("N0")</MudText>
-                    <hr />
-                    <MudText Typo="Typo.body1">🚀 <b>Equity Wealth:</b> ₹@EquityWealth.ToString("N0")</MudText>
-                    <MudText Typo="Typo.body1">🎯 <b>Bond Goal:</b> ₹@BondSavings.ToString("N0") (@BondGoalPercentage.ToString("F1")%)</MudText>
-                 </MudPaper>
-            </div>
+        <div class="d-flex flex-column justify-center align-center" style="min-height: 60vh;">
+            <MudProgressCircular Color="Color.Primary" Size="Size.Large" Indeterminate="true" Class="mb-4" />
+            <MudText Typo="Typo.h5" Class="fw-bold text-primary">Syncing Wealth Engine...</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted">Fetching live data from the ArthaOne Cloud</MudText>
         </div>
-
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card p-3 shadow-sm">
-                    <h5>Stocks (@Stocks.Count)</h5>
-                    <table class="table table-sm">
-                        <thead><tr><th>Name</th><th class="text-end">Value</th></tr></thead>
-                        <tbody>
-                            @foreach (var s in Stocks.OrderByDescending(x => x.ClosingValue).Take(5))
-                            {
-                                <tr><td>@s.StockName</td><td class="text-end">₹@s.ClosingValue.ToString("N0")</td></tr>
-                            }
-                        </tbody>
-                    </table>
-                    <small class="text-muted">Showing top 5 stocks...</small>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card p-3 shadow-sm">
-                    <h5>Mutual Funds (@MFs.Count)</h5>
-                    <table class="table table-sm">
-                        <thead><tr><th>Scheme</th><th class="text-end">Value</th></tr></thead>
-                        <tbody>
-                            @foreach (var m in MFs.Where(x => !x.IsShortTermGoal).OrderByDescending(x => x.CurrentValue).Take(5))
-                            {
-                                <tr><td>@m.SchemeName</td><td class="text-end">₹@m.CurrentValue.ToString("N0")</td></tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+    }
+    else if (TotalNetWorth == 0)
+    {
+        <MudPaper Class="pa-8 text-center" Elevation="0" Outlined="true" Style="border-radius: 15px;">
+            <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Size="Size.Large" Color="Color.Primary" Class="mb-3" />
+            <MudText Typo="Typo.h5" Class="fw-bold">Welcome to your Wealth OS!</MudText>
+            <MudText Typo="Typo.body1" Class="text-muted mt-2">Go to the <b>Investments</b> and <b>Expenses</b> tabs to load your data into the cloud.</MudText>
+        </MudPaper>
     }
     else
     {
-        <div class="alert alert-warning text-center">
-            👋 Welcome back! Drop your Groww/Broker Excel files above to refresh your wealth data.
-        </div>
+        <!-- QUICK STATS ROW -->
+        <MudGrid Class="mb-6" Spacing="4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 h-100" Elevation="0" Outlined="true" Style="border-left: 5px solid #1e3a8a; border-radius: 12px;">
+                    <MudText Typo="Typo.caption" Class="text-muted fw-bold text-uppercase">Core Net Worth</MudText>
+                    <MudText Typo="Typo.h4" Class="fw-bold text-primary mt-2">₹@TotalNetWorth.ToString("N0")</MudText>
+                    @if (ExcludedWealth > 0)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Error">Excludes ₹@ExcludedWealth.ToString("N0") in Temp Funds</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 h-100" Elevation="0" Outlined="true" Style="border-left: 5px solid #10b981; border-radius: 12px;">
+                    <MudText Typo="Typo.caption" Class="text-muted fw-bold text-uppercase">Total Core Equity</MudText>
+                    <MudText Typo="Typo.h5" Class="fw-bold text-success mt-2">₹@CoreEquityWealth.ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted">@(((double)(CoreEquityWealth / TotalNetWorth * 100)).ToString("F1"))% of portfolio</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 h-100" Elevation="0" Outlined="true" Style="border-left: 5px solid #f59e0b; border-radius: 12px;">
+                    <MudText Typo="Typo.caption" Class="text-muted fw-bold text-uppercase">Total Debt</MudText>
+                    <MudText Typo="Typo.h5" Class="fw-bold text-warning mt-2">₹@DebtWealth.ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted">@(((double)(DebtWealth / TotalNetWorth * 100)).ToString("F1"))% of portfolio</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 h-100" Elevation="0" Outlined="true" Style="border-left: 5px solid #ef4444; border-radius: 12px;">
+                    <MudText Typo="Typo.caption" Class="text-muted fw-bold text-uppercase">Monthly Burn Rate</MudText>
+                    <MudText Typo="Typo.h5" Class="fw-bold text-error mt-2">₹@MonthlyExpenses.ToString("N0")</MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted">SWR Target: @Settings.SafeWithdrawalRate%</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Spacing="4" Class="mb-6">
+            <MudItem xs="12" md="8">
+                <MudPaper Class="pa-6 h-100 d-flex flex-column justify-center" Elevation="0" Outlined="true" Style="border-radius: 12px; background-color: var(--mud-palette-background);">
+                    <MudText Typo="Typo.h6" Class="fw-bold mb-4">Financial Health Diagnosis</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            @{
+                                var totalInvestments = Settings.MonthlySIP + MyEPF.MonthlyContribution + MyRDs.Sum(r => r.MonthlyInvestment);
+                                var savingsRate = Settings.MonthlyIncome > 0 ? (totalInvestments / Settings.MonthlyIncome) * 100 : 0;
+                                var saveColor = savingsRate >= 30 ? Color.Success : (savingsRate >= 15 ? Color.Warning : Color.Error);
+                            }
+                            <MudText Typo="Typo.subtitle2" Class="fw-bold text-muted">True Savings Rate</MudText>
+                            <MudText Typo="Typo.h4" Color="@saveColor" Class="fw-bold mb-2">@savingsRate.ToString("F1")%</MudText>
+                            <MudProgressLinear Color="@saveColor" Value="@((double)savingsRate)" Size="Size.Large" Class="mb-2 rounded" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            @{
+                                var expenseRate = Settings.MonthlyIncome > 0 ? (MonthlyExpenses / Settings.MonthlyIncome) * 100 : 0;
+                                var expColor = expenseRate <= 50 ? Color.Success : (expenseRate <= 75 ? Color.Warning : Color.Error);
+                            }
+                            <MudText Typo="Typo.subtitle2" Class="fw-bold text-muted">Expense Rate</MudText>
+                            <MudText Typo="Typo.h4" Color="@expColor" Class="fw-bold mb-2">@expenseRate.ToString("F1")%</MudText>
+                            <MudProgressLinear Color="@expColor" Value="@((double)expenseRate)" Size="Size.Large" Class="mb-2 rounded" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-6 h-100 d-flex flex-column text-white position-relative" Elevation="0" Style="border-radius: 12px; background: linear-gradient(135deg, #10b981 0%, #047857 100%);">
+                    <div class="d-flex align-center gap-2 mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.RssFeed" Size="Size.Medium" />
+                        <MudText Typo="Typo.subtitle2" Class="fw-bold text-uppercase opacity-75">Top Financial News</MudText>
+                    </div>
+
+                    @if (IsLoadingNews)
+                    {
+                        <div class="d-flex justify-center align-center h-100">
+                            <MudProgressCircular Color="Color.Inherit" Size="Size.Small" Indeterminate="true" />
+                        </div>
+                    }
+                    else
+                    {
+                        <MudCarousel TData="NewsItem"
+                                     Class="mud-width-full flex-grow-1" Style="height: 140px;"
+                                     ShowArrows="true"
+                                     ShowBullets="true"
+                                     AutoCycle="true"
+                                     AutoCycleTime="TimeSpan.FromSeconds(5)">
+                            @foreach (var news in DailyInsights)
+                            {
+                                <MudCarouselItem Transition="Transition.Slide" Class="d-flex align-center justify-center px-10 pb-14 pt-2">
+                                    <MudLink Href="@news.Link" Target="_blank" Underline="Underline.None" Color="Color.Inherit">
+                                        <MudText Typo="Typo.body2" Class="fw-bold text-center" Style="line-height: 1.5; text-shadow: 1px 1px 2px rgba(0,0,0,0.15);">
+                                            "@news.Title"
+                                        </MudText>
+                                    </MudLink>
+                                </MudCarouselItem>
+                            }
+                        </MudCarousel>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Spacing="4" Class="mb-6">
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-6 h-100 d-flex flex-column" Elevation="0" Outlined="true" Style="border-radius:15px;">
+                    <MudText Typo="Typo.h6" Class="fw-bold mb-4">Core Equity Performance</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted mb-4">Your true XIRR based on average portfolio age.</MudText>
+
+                    <div class="mt-auto">
+                        <div class="d-flex justify-space-between align-center py-3 border-bottom">
+                            <span class="fw-bold"><MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Info" Size="Size.Small" Class="me-2" />Direct Stocks</span>
+                            <b class="text-info">@StockCagr.ToString("F2")%</b>
+                        </div>
+                        <div class="d-flex justify-space-between align-center py-3 border-bottom">
+                            <span class="fw-bold"><MudIcon Icon="@Icons.Material.Filled.PieChart" Color="Color.Success" Size="Size.Small" Class="me-2" />Mutual Funds</span>
+                            <b class="text-success">@MfCagr.ToString("F2")%</b>
+                        </div>
+                        <div class="d-flex justify-space-between align-center py-3 mud-theme-surface rounded px-3 mt-2" style="border: 1px solid var(--mud-palette-lines-default);">
+                            <span class="fw-bold text-primary">Combined Equity CAGR</span>
+                            <MudText Typo="Typo.h6" Color="Color.Primary" Class="fw-bold">@TotalEquityCagr.ToString("F2")%</MudText>
+                        </div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-6 text-center d-flex flex-column align-center h-100" Elevation="0" Outlined="true" Style="border-radius:15px;">
+                    <MudText Typo="Typo.h6" Class="mb-4 fw-bold w-100 text-start">Macro Allocation</MudText>
+                    <svg width="200" height="200" viewBox="0 0 42 42" class="donut mb-2">
+                        <circle cx="21" cy="21" r="15.915" fill="transparent"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#eeeeee" stroke-width="4"></circle>
+                        @{
+                            var eqPct = TotalNetWorth > 0 ? (double)(CoreEquityWealth / TotalNetWorth * 100) : 0;
+                            var debtPct = TotalNetWorth > 0 ? (double)(DebtWealth / TotalNetWorth * 100) : 0;
+                            var physPct = TotalNetWorth > 0 ? (double)(PhysicalWealth / TotalNetWorth * 100) : 0;
+                        }
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#10b981" stroke-width="4" stroke-dasharray="@($"{eqPct} {100 - eqPct}")" stroke-dashoffset="25"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f59e0b" stroke-width="4" stroke-dasharray="@($"{debtPct} {100 - debtPct}")" stroke-dashoffset="@(25 - eqPct)"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#6b7280" stroke-width="4" stroke-dasharray="@($"{physPct} {100 - physPct}")" stroke-dashoffset="@(25 - eqPct - debtPct)"></circle>
+                    </svg>
+                    <div class="mt-2 text-start small w-100">
+                        <div class="d-flex justify-space-between py-1"><span><span style="color:#10b981">●</span> Equity</span> <b>₹@CoreEquityWealth.ToString("N0")</b></div>
+                        <div class="d-flex justify-space-between py-1"><span><span style="color:#f59e0b">●</span> Debt</span> <b>₹@DebtWealth.ToString("N0")</b></div>
+                        <div class="d-flex justify-space-between py-1"><span><span style="color:#6b7280">●</span> Physical</span> <b>₹@PhysicalWealth.ToString("N0")</b></div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-6 text-center d-flex flex-column align-center h-100" Elevation="0" Outlined="true" Style="border-radius:15px;">
+                    <MudText Typo="Typo.h6" Class="mb-4 fw-bold w-100 text-start">Debt Breakdown</MudText>
+                    <svg width="200" height="200" viewBox="0 0 42 42" class="donut mb-2">
+                        <circle cx="21" cy="21" r="15.915" fill="transparent"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#eeeeee" stroke-width="4"></circle>
+                        @{
+                            var epfPct = DebtWealth > 0 ? (double)(EpfWealth / DebtWealth * 100) : 0;
+                            var fdPct = DebtWealth > 0 ? (double)(FdWealth / DebtWealth * 100) : 0;
+                            var rdPct = DebtWealth > 0 ? (double)(RdWealth / DebtWealth * 100) : 0;
+                            var bondPct = DebtWealth > 0 ? (double)(BondWealth / DebtWealth * 100) : 0;
+                        }
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#0ea5e9" stroke-width="4" stroke-dasharray="@($"{epfPct} {100 - epfPct}")" stroke-dashoffset="25"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#eab308" stroke-width="4" stroke-dasharray="@($"{fdPct} {100 - fdPct}")" stroke-dashoffset="@(25 - epfPct)"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#f43f5e" stroke-width="4" stroke-dasharray="@($"{rdPct} {100 - rdPct}")" stroke-dashoffset="@(25 - epfPct - fdPct)"></circle>
+                        <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#8b5cf6" stroke-width="4" stroke-dasharray="@($"{bondPct} {100 - bondPct}")" stroke-dashoffset="@(25 - epfPct - fdPct - rdPct)"></circle>
+                    </svg>
+                    <div class="mt-2 text-start small w-100">
+                        <div class="d-flex justify-space-between py-1"><span><span style="color:#0ea5e9">●</span> EPF</span> <b>₹@EpfWealth.ToString("N0")</b></div>
+                        <div class="d-flex justify-space-between py-1"><span><span style="color:#eab308">●</span> Fixed Deps</span> <b>₹@FdWealth.ToString("N0")</b></div>
+                        <div class="d-flex justify-space-between py-1"><span><span style="color:#f43f5e">●</span> Rec. Deps</span> <b>₹@RdWealth.ToString("N0")</b></div>
+                        <div class="d-flex justify-space-between py-1"><span><span style="color:#8b5cf6">●</span> Bonds</span> <b>₹@BondWealth.ToString("N0")</b></div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <!-- RECENT WEALTH TREND (Compact) -->
+        @if (showTrend)
+        {
+            var color = recentWealthDiff >= 0 ? Color.Success : Color.Error;
+            var icon = recentWealthDiff >= 0 ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown;
+
+            <MudPaper Class="pa-4 mb-6 mud-theme-surface d-flex justify-space-between align-center" Elevation="0" Outlined="true" Style="border-radius: 12px;">
+                <div>
+                    <MudText Typo="Typo.h6" Class="fw-bold">Recent Wealth Trend</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">Compared to your last update</MudText>
+                </div>
+                <div class="text-end">
+                    <MudText Typo="Typo.h5" Color="@color" Class="fw-bold d-flex align-center justify-end gap-1">
+                        <MudIcon Icon="@icon" Size="Size.Medium" />
+                        @(recentWealthDiff >= 0 ? "+" : "")₹@Math.Abs(recentWealthDiff).ToString("N0")
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="@color">(@(recentWealthDiff >= 0 ? "+" : "")@Math.Abs(recentWealthPct).ToString("F2")%)</MudText>
+                </div>
+            </MudPaper>
+        }
+
+        <MudGrid Spacing="6">
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-6 shadow-sm h-100 d-flex flex-column" Elevation="0" Outlined="true" Style="border-radius:15px;">
+                    <MudText Typo="Typo.h6" Class="fw-bold mb-1">Fixed Income Projections (Next 5 Years)</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted mb-4">See how your safety net compounds independently of the stock market.</MudText>
+                    @if (FixedIncomeSeries.Any())
+                    {
+                        <div style="flex-grow: 1; min-height: 300px;">
+                            <MudChart T="double" ChartType="ChartType.Line" ChartSeries="@FixedIncomeSeries" XAxisLabels="@ProjectionLabels" Width="100%" Height="100%" />
+                        </div>
+                    }
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-8 shadow-sm h-100 d-flex flex-column justify-center text-white" Style="border-radius:15px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);">
+                    <div class="d-flex align-center gap-2 mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.LocalFireDepartment" Size="Size.Large" Color="Color.Warning" />
+                        <MudText Typo="Typo.h5" Class="fw-bold">FIRE Journey (@Settings.SafeWithdrawalRate% SWR)</MudText>
+                    </div>
+
+                    <MudText Typo="Typo.body1" Class="mb-1 opacity-75">Target Portfolio (Inflation Adjusted)</MudText>
+                    <MudText Typo="Typo.h3" Class="fw-bold mb-6">₹@FireTargetAmount.ToString("N0")</MudText>
+
+                    <MudPaper Class="pa-4 rounded-lg text-dark mb-4" Style="background-color: rgba(255,255,255,0.95); border-left: 6px solid #10b981; backdrop-filter: blur(4px);">
+                        <div class="d-flex justify-space-between align-end mb-2">
+                            <MudText Typo="Typo.h6" Class="fw-bold">Estimated Time to FI:</MudText>
+                            <MudText Typo="Typo.h4" Color="Color.Success" Class="fw-bold">@YearsToFire Years</MudText>
+                        </div>
+
+                        @{
+                            var progress = FireTargetAmount > 0 ? (double)(TotalNetWorth / FireTargetAmount * 100) : 0;
+                        }
+                        <MudProgressLinear Color="Color.Success" Value="@progress" Size="Size.Large" Class="my-2 rounded" Style="height: 12px;" />
+                        <MudText Typo="Typo.caption" Class="text-muted fw-bold">You are @progress.ToString("F1")% of the way to financial independence!</MudText>
+                    </MudPaper>
+
+                    <div class="d-flex gap-4 opacity-75 small">
+                        <div><MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="me-1" /> @TotalEquityCagr.ToString("F1")% True Equity CAGR</div>
+                        <div><MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" Class="me-1" /> @Settings.ExpectedInflation.ToString("F1")% Inflation</div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
     }
 </div>
 
 @code {
+    private bool IsSyncingData = true;
+
     private List<StockHolding> Stocks = new();
     private List<MutualFundHolding> MFs = new();
+    private EPFData MyEPF = new();
+    private List<RecurringDeposit> MyRDs = new();
+    private List<FixedDeposit> MyFDs = new();
+    private List<PhysicalAsset> MyPhysicalAssets = new();
+    private List<ExpenseItem> MyExpenses = new();
+    private UserSettings Settings = new();
+    private List<ChartSeries<double>> historyChartData = new();
 
-    private decimal EquityWealth => Stocks.Sum(s => s.ClosingValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue);
-    private decimal BondSavings => MFs.Where(m => m.IsShortTermGoal).Sum(m => m.CurrentValue);
-    private decimal TotalNetWorth => EquityWealth + BondSavings;
-    private decimal BondGoalPercentage => (BondSavings / 110000m) * 100;
+    private string[] historyChartLabels = new string[0];
 
-    private double[] ChartData => new double[] {
-        (double)Stocks.Sum(s=>s.ClosingValue),
-        (double)MFs.Where(m=>!m.IsShortTermGoal).Sum(m=>m.CurrentValue),
-        (double)BondSavings
-    };
-    private string[] ChartLabels = { "Stocks", "Equity MFs", "Bond Goal" };
+    private decimal MonthlyExpenses = 30000;
 
-    protected override void OnInitialized()
+    private decimal CoreEquityWealth => Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.ClosingValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue);
+    private decimal ExcludedWealth => Stocks.Where(s => s.IsShortTermGoal).Sum(s => s.ClosingValue) + MFs.Where(m => m.IsShortTermGoal).Sum(m => m.CurrentValue);
+
+    private decimal EpfWealth => MyEPF.CurrentValue;
+    private decimal RdWealth => MyRDs.Sum(r => r.CurrentValue);
+    private decimal FdWealth => MyFDs.Where(f => !f.IsBond).Sum(f => f.Principal);
+    private decimal BondWealth => MyFDs.Where(f => f.IsBond).Sum(f => f.Principal);
+    private decimal DebtWealth => EpfWealth + RdWealth + FdWealth + BondWealth;
+
+    private decimal PhysicalWealth => MyPhysicalAssets.Sum(p => p.Value);
+    private decimal TotalNetWorth => CoreEquityWealth + DebtWealth + PhysicalWealth;
+
+    private decimal recentWealthDiff = 0;
+    private double recentWealthPct = 0;
+    private bool showTrend = false;
+
+    private double StockCagr = 0;
+    private double MfCagr = 0;
+    private double TotalEquityCagr = 12.0;
+
+    private int YearsToFire = 0;
+    private decimal FireTargetAmount = 0;
+
+    public List<ChartSeries<double>> FixedIncomeSeries = new List<ChartSeries<double>>();
+    public string[] ProjectionLabels = { "Year 1", "Year 2", "Year 3", "Year 4", "Year 5" };
+
+    private List<NewsItem> DailyInsights = new();
+    private bool IsLoadingNews = true;
+
+    protected override async Task OnInitializedAsync()
     {
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        IsSyncingData = true;
+        StateHasChanged();
+        await Task.Delay(50); // Force the browser to render the spinner
+
+        // 1. Get Logged In User
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var currentUserId = authState.User.Claims.FirstOrDefault(c => ClaimTypes.NameIdentifier == c.Type)?.Value ?? "";
+
+        if (!string.IsNullOrEmpty(currentUserId))
+        {
+            // 2. Fetch Settings
+            var settingsResponse = await SupabaseClient.From<UserSettings>().Where(x => x.Id == currentUserId).Get();
+            Settings = settingsResponse.Models.FirstOrDefault() ?? new UserSettings();
+            TotalEquityCagr = Settings.ExpectedEquityReturn;
+
+            // 3. Fetch Expenses
+            var expensesResponse = await SupabaseClient.From<ExpenseItem>().Where(x => x.UserId == currentUserId).Get();
+            MyExpenses = expensesResponse.Models;
+            if (MyExpenses.Any()) MonthlyExpenses = MyExpenses.Sum(e => e.Amount); // Dashboard uses ALL expenses by default
+
+            // 4. Fetch All Assets
+            var assetsResponse = await SupabaseClient.From<AssetModel>().Where(x => x.UserId == currentUserId).Get();
+            var allAssets = assetsResponse.Models;
+
+            Stocks = allAssets.Where(a => a.AssetType == "Stock").Select(a => new StockHolding { Id = a.Id, StockName = a.Name, InvestedValue = a.InvestedValue, ClosingValue = a.CurrentValue, Category = a.Category, IsShortTermGoal = a.IsShortTermGoal }).ToList();
+            MFs = allAssets.Where(a => a.AssetType == "MF").Select(a => new MutualFundHolding { Id = a.Id, SchemeName = a.Name, InvestedValue = a.InvestedValue, CurrentValue = a.CurrentValue, Category = a.Category, IsShortTermGoal = a.IsShortTermGoal }).ToList();
+            MyRDs = allAssets.Where(a => a.AssetType == "RD").Select(a => new RecurringDeposit { Id = a.Id, CurrentValue = a.CurrentValue, MonthlyInvestment = a.MonthlyContribution, InterestRate = a.InterestRate, MonthsLeft = a.MonthsDuration }).ToList();
+            MyFDs = allAssets.Where(a => a.AssetType == "FD").Select(a => new FixedDeposit { Id = a.Id, Principal = a.InvestedValue, InterestRate = a.InterestRate, MonthsDuration = a.MonthsDuration, IsBond = a.IsBond }).ToList();
+            MyPhysicalAssets = allAssets.Where(a => a.AssetType == "Physical").Select(a => new PhysicalAsset { Id = a.Id, Name = a.Name, Value = a.CurrentValue }).ToList();
+
+            var epfCloud = allAssets.FirstOrDefault(a => a.AssetType == "EPF");
+            MyEPF = epfCloud != null ? new EPFData { Id = epfCloud.Id, CurrentValue = epfCloud.CurrentValue, MonthlyContribution = epfCloud.MonthlyContribution, InterestRate = epfCloud.InterestRate } : new EPFData();
+        }
+
+        // True XIRR via local age setting
+        int age = await LocalStorage.GetItemAsync<int>("portfolioAge");
+        if (age <= 0) age = 36; // Default to 36 months if not set yet, matching Investments.razor
+
+        StockCagr = ComputeCagr(Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.InvestedValue), Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.ClosingValue), age);
+        MfCagr = ComputeCagr(MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.InvestedValue), MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue), age);
+
+        decimal totalInv = Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.InvestedValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.InvestedValue);
+        if (totalInv > 0)
+        {
+            TotalEquityCagr = ComputeCagr(totalInv, CoreEquityWealth, age);
+        }
+
+        if (TotalNetWorth > 0)
+        {
+            RunMasterSimulation();
+            GenerateFixedIncomeProjections();
+        }
+
+        await FetchLiveNewsAsync();
+
+        // --- BULLETPROOF SILENT TRACKING ---
+        if (TotalNetWorth > 0 && !string.IsNullOrEmpty(currentUserId))
+        {
+            var historyResponse = await SupabaseClient.From<NetWorthSnapshot>().Where(x => x.UserId == currentUserId).Get();
+            var history = historyResponse.Models.OrderBy(h => h.RecordedDate).ToList();
+
+            var today = DateTime.UtcNow.Date;
+            var todaysSnapshot = history.FirstOrDefault(h => h.RecordedDate.Date == today);
+
+            if (todaysSnapshot != null)
+            {
+                if (todaysSnapshot.TotalNetWorth != TotalNetWorth)
+                {
+                    await SupabaseClient.From<NetWorthSnapshot>().Where(x => x.Id == todaysSnapshot.Id).Set(x => x.TotalNetWorth, TotalNetWorth).Update();
+                    todaysSnapshot.TotalNetWorth = TotalNetWorth;
+                }
+            }
+            else
+            {
+                var previousSnapshot = history.LastOrDefault();
+                if (previousSnapshot == null || previousSnapshot.TotalNetWorth != TotalNetWorth)
+                {
+                    var newSnap = new NetWorthSnapshot { UserId = currentUserId, RecordedDate = today, TotalNetWorth = TotalNetWorth };
+                    await SupabaseClient.From<NetWorthSnapshot>().Insert(newSnap);
+                    history.Add(newSnap);
+                }
+            }
+
+            // Calculate the trend using the raw database history!
+            if (history.Count > 1)
+            {
+                var currentWorth = history.Last().TotalNetWorth;
+                var previousWorth = history[history.Count - 2].TotalNetWorth; // Get the second-to-last record
+
+                recentWealthDiff = currentWorth - previousWorth;
+                recentWealthPct = previousWorth > 0 ? (double)(recentWealthDiff / previousWorth) * 100 : 0;
+                showTrend = true;
+            }
+            else
+            {
+                showTrend = false;
+            }
+        }
+        // ---------------------------------------------------
+
+        IsSyncingData = false;
     }
 
-    private async Task HandleStockUpload(InputFileChangeEventArgs e)
+    private async Task FetchLiveNewsAsync()
     {
-        using var stream = e.File.OpenReadStream();
-        using var ms = new MemoryStream();
-        await stream.CopyToAsync(ms);
-        ms.Position = 0;
-
-        using var reader = ExcelReaderFactory.CreateReader(ms);
-        var result = reader.AsDataSet();
-        var table = result.Tables[0];
-        bool startReading = false;
-
-        Stocks.Clear();
-        foreach (DataRow row in table.Rows)
+        try
         {
-            string firstCell = row[0]?.ToString();
-            if (firstCell == "Stock Name") { startReading = true; continue; }
-            if (!startReading || string.IsNullOrWhiteSpace(firstCell)) continue;
+            using var client = new HttpClient();
+            string rssUrl = "https://www.livemint.com/rss/money";
+            string apiUrl = $"https://api.rss2json.com/v1/api.json?rss_url={Uri.EscapeDataString(rssUrl)}";
 
-            // Filter out 'null' bond glitch
-            if (firstCell == "null" || row[1]?.ToString() == "INE342T07577") continue;
-
-            Stocks.Add(new StockHolding
+            var response = await client.GetStringAsync(apiUrl);
+            var json = JsonNode.Parse(response);
+            var items = json?["items"]?.AsArray();
+            if (items != null && items.Count > 0)
             {
-                StockName = firstCell,
-                ClosingValue = Convert.ToDecimal(row[6])
-            });
+                DailyInsights = items
+                    .Take(5)
+                    .Select(x => new NewsItem
+                    {
+                        Title = x?["title"]?.ToString(),
+                        Link = x?["link"]?.ToString()
+                    })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Title))
+                    .ToList();
+            }
+            if (!DailyInsights.Any()) throw new Exception("No news parsed.");
         }
-        StateHasChanged();
+        catch (Exception ex)
+        {
+            DailyInsights = new List<NewsItem> {
+                new NewsItem { Title = "Every 1% in Mutual Fund Expense Ratio silently eats away ~15% of your total wealth. Switch to Direct plans!", Link = "#" },
+                new NewsItem { Title = "Indian inflation is stealthy. Education and Healthcare inflate at ~10% annually.", Link = "#" },
+                new NewsItem { Title = "EPF contributions are tax-free up to ₹2.5 Lakhs annually.", Link = "#" },
+                new NewsItem { Title = "Rebalancing your portfolio once a year forces you to 'buy low and sell high' automatically.", Link = "#" },
+                new NewsItem { Title =  "A 3.5% Safe Withdrawal Rate (SWR) is highly recommended for early retirees due to currency volatility.", Link = "#" }
+            };
+        }
+        finally
+        {
+            IsLoadingNews = false;
+        }
     }
 
-    private async Task HandleMFUpload(InputFileChangeEventArgs e)
+    private double ComputeCagr(decimal invested, decimal current, int months)
     {
-        using var stream = e.File.OpenReadStream();
-        using var ms = new MemoryStream();
-        await stream.CopyToAsync(ms);
-        ms.Position = 0;
+        if (invested == 0 || months == 0) return 0.0;
+        double ratio = (double)(current / invested);
+        double power = 12.0 / months;
+        return (Math.Pow(ratio, power) - 1) * 100;
+    }
 
-        using var reader = ExcelReaderFactory.CreateReader(ms);
-        var result = reader.AsDataSet();
-        var table = result.Tables[0];
-        bool startReading = false;
+    private void RunMasterSimulation()
+    {
+        decimal annualExpenses = MonthlyExpenses * 12;
+        FireTargetAmount = annualExpenses * (decimal)(100.0 / Settings.SafeWithdrawalRate);
 
-        MFs.Clear();
-        foreach (DataRow row in table.Rows)
+        decimal simEquity = CoreEquityWealth;
+        decimal simEPF = MyEPF.CurrentValue;
+        decimal simDebt = MyFDs.Sum(f => f.Principal);
+        decimal simPhysical = PhysicalWealth;
+
+        var simRDs = MyRDs.Select(r => new RecurringDeposit { CurrentValue = r.CurrentValue, MonthlyInvestment = r.MonthlyInvestment, InterestRate = r.InterestRate, MonthsLeft = r.MonthsLeft }).ToList();
+        var simFDs = MyFDs.Select(f => new FixedDeposit { Principal = f.Principal, InterestRate = f.InterestRate, MonthsDuration = f.MonthsDuration }).ToList();
+
+        int months = 0;
+        while ((simEquity + simEPF + simDebt + simPhysical + simRDs.Sum(r => r.CurrentValue) + simFDs.Sum(f => f.Principal)) < FireTargetAmount && months < 600)
         {
-            string firstCell = row[0]?.ToString();
-            if (firstCell == "Scheme Name") { startReading = true; continue; }
-            if (!startReading || string.IsNullOrWhiteSpace(firstCell)) continue;
+            months++;
+            simEquity += Settings.MonthlySIP;
+            simEquity *= (decimal)(1 + (TotalEquityCagr / 100 / 12));
+            simEPF += MyEPF.MonthlyContribution;
+            simEPF *= (decimal)(1 + (MyEPF.InterestRate / 100 / 12));
+            simDebt *= (decimal)(1 + (7.0 / 100 / 12));
 
-            MFs.Add(new MutualFundHolding
-            {
-                SchemeName = firstCell,
-                CurrentValue = Convert.ToDecimal(row[8])
-            });
+            foreach (var fd in simFDs.Where(f => f.MonthsDuration > 0)) { fd.Principal *= (decimal)(1 + (fd.InterestRate / 100 / 12)); fd.MonthsDuration--; if (fd.MonthsDuration == 0) { simDebt += fd.Principal; fd.Principal = 0; } }
+            foreach (var rd in simRDs.Where(r => r.MonthsLeft > 0)) { rd.CurrentValue += rd.MonthlyInvestment; rd.CurrentValue *= (decimal)(1 + (rd.InterestRate / 100 / 12)); rd.MonthsLeft--; if (rd.MonthsLeft == 0) { simDebt += rd.CurrentValue; rd.CurrentValue = 0; } }
+            if (months % 12 == 0) FireTargetAmount *= (decimal)(1 + (Settings.ExpectedInflation / 100));
         }
-        StateHasChanged();
+        YearsToFire = months / 12;
+    }
+
+    private void GenerateFixedIncomeProjections()
+    {
+        FixedIncomeSeries.Clear();
+        double[] epfProj = new double[5];
+        double[] fdProj = new double[5];
+        double[] rdProj = new double[5];
+
+        decimal simEpf = MyEPF.CurrentValue;
+        var simFDs = MyFDs.Select(f => new FixedDeposit { Principal = f.Principal, InterestRate = f.InterestRate, MonthsDuration = f.MonthsDuration, IsBond = f.IsBond }).ToList();
+        var simRDs = MyRDs.Select(r => new RecurringDeposit { CurrentValue = r.CurrentValue, MonthlyInvestment = r.MonthlyInvestment, InterestRate = r.InterestRate, MonthsLeft = r.MonthsLeft }).ToList();
+
+        for (int y = 0; y < 5; y++)
+        {
+            for (int m = 0; m < 12; m++)
+            {
+                simEpf += MyEPF.MonthlyContribution;
+                simEpf *= (decimal)(1 + (MyEPF.InterestRate / 100 / 12));
+
+                foreach (var fd in simFDs.Where(f => f.MonthsDuration > 0))
+                {
+                    fd.Principal *= (decimal)(1 + (fd.InterestRate / 100 / 12));
+                    fd.MonthsDuration--;
+                }
+                foreach (var rd in simRDs.Where(r => r.MonthsLeft > 0))
+                {
+                    rd.CurrentValue += rd.MonthlyInvestment;
+                    rd.CurrentValue *= (decimal)(1 + (rd.InterestRate / 100 / 12));
+                    rd.MonthsLeft--;
+                }
+            }
+            epfProj[y] = (double)Math.Round(simEpf);
+            fdProj[y] = (double)Math.Round(simFDs.Sum(f => f.Principal));
+            rdProj[y] = (double)Math.Round(simRDs.Sum(r => r.CurrentValue));
+        }
+
+        FixedIncomeSeries.Add(new ChartSeries<double> { Name = "EPF", Data = epfProj });
+        FixedIncomeSeries.Add(new ChartSeries<double> { Name = "Active FDs & Bonds", Data = fdProj });
+        FixedIncomeSeries.Add(new ChartSeries<double> { Name = "Active RDs", Data = rdProj });
     }
 }
-
-<style>
-    .border-dashed { border: 2px dashed #dee2e6; transition: all 0.3s; }
-    .border-dashed:hover { border-color: #0d6efd; background-color: #f8f9fa !important; }
-    .card { border: none; border-radius: 12px; }
-</style>

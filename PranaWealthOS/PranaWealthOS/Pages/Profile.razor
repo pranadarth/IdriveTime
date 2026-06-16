@@ -1,0 +1,182 @@
+﻿@page "/profile"
+@inject Blazored.LocalStorage.ILocalStorageService LocalStorage
+@inject Supabase.Client SupabaseClient
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@using MudBlazor
+@using PranaWealthOS.Models
+@using System.Security.Claims
+
+<PageTitle>User Profile & Settings</PageTitle>
+
+<div class="container-fluid mt-4" style="font-family: 'Inter', sans-serif; max-width: 1000px;">
+    <div class="mb-4">
+        <h2 class="text-primary m-0 fw-bold d-flex align-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Large" /> Profile & Settings
+        </h2>
+    </div>
+
+    <MudPaper Class="pa-4 mb-4 mud-theme-surface" Elevation="0" Outlined="true" Style="border-radius: 12px;">
+        <div class="d-flex flex-column flex-md-row align-md-center justify-space-between gap-4">
+            <div class="d-flex align-center gap-4">
+                <MudAvatar Color="Color.Primary" Style="height: 48px; width: 48px; font-size: 20px; font-weight: bold;">
+                    @UserInitial
+                </MudAvatar>
+                <div>
+                    <MudText Typo="Typo.subtitle1" Class="fw-bold m-0">@UserEmail</MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted">ArthaOne Secured Cloud Account</MudText>
+                </div>
+            </div>
+
+            <div class="d-flex gap-3">
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Logout" OnClick="HandleLogout" Style="font-weight: 600; text-transform: none; border-color: #fca5a5;">
+                    Sign Out
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveSettings" Style="font-weight: 600; text-transform: none;">
+                    Save Profile
+                </MudButton>
+            </div>
+        </div>
+    </MudPaper>
+
+    <MudGrid Spacing="4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-5 h-100" Elevation="0" Outlined="true" Style="border-radius: 12px;">
+                <MudText Typo="Typo.subtitle1" Class="fw-bold mb-3">Personal & Cashflow</MudText>
+
+                <MudTextField @bind-Value="Settings.UserName" Label="Preferred Name" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                <MudDatePicker Label="Date of Birth" @bind-Date="Settings.DateOfBirth" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+
+                <MudDivider Class="my-3" />
+
+                <MudNumericField @bind-Value="Settings.MonthlyIncome" Label="Monthly Post-Tax Income (₹)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                <MudNumericField @bind-Value="Settings.MonthlySIP" Label="Monthly Equity SIP (₹)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" HelperText="EPF and RD are calculated automatically." />
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-5 h-100" Elevation="0" Outlined="true" Style="border-radius: 12px; border-top: 4px solid #ef4444;">
+                <MudText Typo="Typo.subtitle1" Class="fw-bold mb-1">FIRE Assumptions</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted mb-3 d-block">Applies to all dashboards and projections.</MudText>
+
+                <MudNumericField @bind-Value="Settings.ExpectedInflation" Label="Expected Inflation (%)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                <MudNumericField @bind-Value="Settings.ExpectedEquityReturn" Label="Fallback Equity CAGR (%)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" HelperText="Used if your portfolio is too young." />
+
+                <MudSelect T="double" @bind-Value="Settings.SafeWithdrawalRate" Label="Safe Withdrawal Rate (SWR)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2">
+                    <MudSelectItem T="double" Value="4.0">4.0% (Standard - 25x Target)</MudSelectItem>
+                    <MudSelectItem T="double" Value="3.5">3.5% (Conservative - 28x Target)</MudSelectItem>
+                    <MudSelectItem T="double" Value="3.0">3.0% (Ultra Safe - 33x Target)</MudSelectItem>
+                    <MudSelectItem T="double" Value="2.5">2.5% (Generational - 40x Target)</MudSelectItem>
+                </MudSelect>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- APP INFO & COPYRIGHT -->
+    <MudDivider Class="my-8" />
+    <MudGrid Justify="Justify.Center" Class="mb-6">
+        <MudItem xs="12" Class="text-center">
+            <MudIcon Icon="@Icons.Material.Filled.Dashboard" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
+            <MudText Typo="Typo.h6" Class="fw-bold">ArthaOne Wealth OS</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted mb-2">Version 1.0.0 • Cloud Synced</MudText>
+
+            <div class="d-flex justify-center gap-4 mt-4">
+                <MudLink Href="#" Color="Color.Primary" Underline="Underline.Hover"><MudIcon Icon="@Icons.Material.Filled.Policy" Size="Size.Small" Class="me-1" /> Privacy</MudLink>
+                <MudLink Href="mailto:projectarthaone@gmail.com?subject=ArthaOne%20Support%20Request" Color="Color.Primary" Underline="Underline.Hover"><MudIcon Icon="@Icons.Material.Filled.ContactSupport" Size="Size.Small" Class="me-1" /> Contact Support</MudLink>
+            </div>
+
+            <MudText Typo="Typo.caption" Class="text-muted d-block mt-6">
+                © @DateTime.Now.Year ArthaOne. Built with ❤️ by Pranav.
+            </MudText>
+        </MudItem>
+    </MudGrid>
+</div>
+
+@code {
+    private string UserEmail = "Loading...";
+    private string UserInitial = "U";
+    private string CurrentUserId = "";
+    private bool IsLoading = false;
+    private string currentUserId = "";
+
+    private UserSettings Settings = new UserSettings();
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity != null && user.Identity.IsAuthenticated)
+            {
+                currentUserId = user.Claims.FirstOrDefault(c => ClaimTypes.NameIdentifier == c.Type)?.Value ?? "";
+
+                // Get settings from database
+                var response = await SupabaseClient.From<UserSettings>().Where(x => x.Id == currentUserId).Get();
+                Settings = response.Models.FirstOrDefault() ?? new UserSettings { Id = currentUserId };
+
+                // If the user's name is missing, pull it from their Supabase Auth Metadata!
+                if (string.IsNullOrWhiteSpace(Settings.UserName))
+                {
+                    var currentUser = SupabaseClient.Auth.CurrentUser;
+                    if (currentUser?.UserMetadata != null && currentUser.UserMetadata.TryGetValue("name", out var metaName))
+                    {
+                        Settings.UserName = metaName.ToString();
+
+                        // Save it to the database so we don't have to check metadata again
+                        await SaveSettingsSilently();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading profile: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    // Helper method to quietly save the name update without showing a snackbar popup
+    private async Task SaveSettingsSilently()
+    {
+        try
+        {
+            var exists = await SupabaseClient.From<UserSettings>().Where(x => x.Id == currentUserId).Get();
+            if (exists.Models.Any())
+            {
+                await SupabaseClient.From<UserSettings>().Where(x => x.Id == currentUserId).Update(Settings);
+            }
+            else
+            {
+                await SupabaseClient.From<UserSettings>().Insert(Settings);
+            }
+        }
+        catch { /* Ignore errors on silent save */ }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            Settings.Id = CurrentUserId;
+            await SupabaseClient.From<UserSettings>().Upsert(Settings);
+            Snackbar.Add("Profile and settings saved to cloud!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandleLogout()
+    {
+        await SupabaseClient.Auth.SignOut();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

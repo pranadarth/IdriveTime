@@ -1,0 +1,202 @@
+﻿@page "/expenses"
+@inject Supabase.Client SupabaseClient
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@using PranaWealthOS.Models
+@using System.Security.Claims
+
+<PageTitle>ArthaOne - Cashflow & Expenses</PageTitle>
+
+<div class="container-fluid mt-4" style="max-width: 1000px; font-family: 'Inter', sans-serif;">
+    <div class="mb-6">
+        <h2 class="text-primary m-0 fw-bold d-flex align-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Large" /> Cashflow Management
+        </h2>
+        <MudText Typo="Typo.body2" Class="text-muted mt-1">Track your monthly expenses. This data directly powers your FIRE projections.</MudText>
+    </div>
+
+    <MudGrid Spacing="6">
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-6 h-100" Elevation="0" Outlined="true" Style="border-radius: 12px; border-top: 5px solid #1e3a8a;">
+                <MudText Typo="Typo.h6" Class="fw-bold mb-4">Add Expense</MudText>
+
+                <MudTextField @bind-Value="NewExpense.Name" Label="Expense Name (e.g., Rent, Groceries)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+
+                <MudNumericField @bind-Value="NewExpense.Amount" Label="Monthly Amount (₹)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+
+                <MudSelect T="string" @bind-Value="NewExpense.Category" Label="Category" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-6">
+                    <MudSelectItem Value="@("Housing")">Housing</MudSelectItem>
+                    <MudSelectItem Value="@("Food")">Food & Dining</MudSelectItem>
+                    <MudSelectItem Value="@("Transport")">Transportation</MudSelectItem>
+                    <MudSelectItem Value="@("Utilities")">Utilities</MudSelectItem>
+                    <MudSelectItem Value="@("Lifestyle")">Lifestyle & Entertainment</MudSelectItem>
+                    <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+                </MudSelect>
+
+                <MudSwitch @bind-Value="NewExpense.IsMandatory" Color="Color.Error" Label="Is this an Essential/Mandatory expense?" Class="mb-6 fw-bold" />
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth Size="Size.Large" OnClick="AddExpense" Disabled="IsLoading" Style="border-radius: 8px; font-weight: 600;">
+                    @if (IsLoading)
+                    {
+                        <MudProgressCircular Color="Color.Inherit" Size="Size.Small" Indeterminate="true" Class="me-2" />
+                        <span>Saving...</span>
+                    }
+                    else
+                    {
+                        <span>Add Expense</span>
+                    }
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-6 h-100" Elevation="0" Outlined="true" Style="border-radius: 12px;">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudText Typo="Typo.h6" Class="fw-bold">Your Monthly Expenses</MudText>
+                    <MudChip T="string" Color="Color.Secondary" Variant="Variant.Filled">Total: ₹@TotalExpenses.ToString("N0")</MudChip>
+                </div>
+
+                @if (IsFetching)
+                {
+                    <div class="d-flex justify-center my-8">
+                        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+                    </div>
+                }
+                else if (!ExpenseList.Any())
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-4">You haven't added any expenses yet. Add one to the left!</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="@ExpenseList" Dense="true" Hover="true" Elevation="0" Class="mt-2">
+                        <HeaderContent>
+                            <MudTh><MudText Typo="Typo.subtitle2" Class="fw-bold">Name</MudText></MudTh>
+                            <MudTh><MudText Typo="Typo.subtitle2" Class="fw-bold">Category</MudText></MudTh>
+                            <MudTh><MudText Typo="Typo.subtitle2" Class="fw-bold">Type</MudText></MudTh> <MudTh><MudText Typo="Typo.subtitle2" Class="fw-bold">Amount</MudText></MudTh>
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Name">@context.Name</MudTd>
+                            <MudTd DataLabel="Category">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@context.Category</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Type">
+                                @if (context.IsMandatory)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">Essential</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled">Discretionary</MudChip>
+                                }
+                            </MudTd>
+                            <MudTd DataLabel="Amount" Class="fw-bold">₹@context.Amount.ToString("N0")</MudTd>
+                            <MudTd DataLabel="Actions" Style="text-align: right;">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteExpense(context))" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+@code {
+    private List<ExpenseItem> ExpenseList = new();
+    private ExpenseItem NewExpense = new() { Category = "Other" };
+    private string CurrentUserId = "";
+    private bool IsLoading = false;
+    private bool IsFetching = true;
+
+    private decimal TotalExpenses => ExpenseList.Sum(e => e.Amount);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Get Logged-in User
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        CurrentUserId = authState.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value ?? "";
+
+        // 2. Fetch their expenses from the cloud
+        await LoadExpensesFromCloud();
+    }
+
+    private async Task LoadExpensesFromCloud()
+    {
+        if (string.IsNullOrEmpty(CurrentUserId)) return;
+
+        IsFetching = true;
+        StateHasChanged();
+
+        try
+        {
+            var response = await SupabaseClient.From<ExpenseItem>().Where(x => x.UserId == CurrentUserId).Get();
+            ExpenseList = response.Models.OrderByDescending(e => e.Amount).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading expenses: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsFetching = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task AddExpense()
+    {
+        if (string.IsNullOrWhiteSpace(NewExpense.Name) || NewExpense.Amount <= 0)
+        {
+            Snackbar.Add("Please enter a valid name and amount.", Severity.Warning);
+            return;
+        }
+
+        IsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Link this new expense to the currently logged-in user
+            NewExpense.UserId = CurrentUserId;
+
+            // Save to Supabase Cloud
+            await SupabaseClient.From<ExpenseItem>().Insert(NewExpense);
+
+            Snackbar.Add("Expense added successfully!", Severity.Success);
+
+            // Reset form and refresh list
+            NewExpense = new ExpenseItem { Category = "Other", IsMandatory = true };
+            await LoadExpensesFromCloud();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to add expense: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteExpense(ExpenseItem item)
+    {
+        try
+        {
+            // Delete from Supabase Cloud
+            await SupabaseClient.From<ExpenseItem>().Where(x => x.Id == item.Id).Delete();
+
+            Snackbar.Add($"{item.Name} deleted.", Severity.Info);
+
+            // Refresh list
+            await LoadExpensesFromCloud();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete expense: {ex.Message}", Severity.Error);
+        }
+    }
+}

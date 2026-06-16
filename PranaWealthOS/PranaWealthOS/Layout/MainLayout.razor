@@ -1,13 +1,140 @@
-﻿@using MudBlazor
-@inherits LayoutComponentBase
-<div class="page">
-    <main>
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
-<MudThemeProvider />
+﻿@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthProvider
+@inject Supabase.Client SupabaseClient
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+
+<MudThemeProvider Theme="_currentTheme" @bind-IsDarkMode="_isDarkMode" />
+<MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
-<MudPopoverProvider />
+
+<CascadingAuthenticationState>
+    <AuthorizeView>
+        <Authorized Context="authState">
+            <MudLayout>
+                <MudAppBar Elevation="1" Color="Color.Surface" Class="border-bottom">
+                    <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+                    <MudText Typo="Typo.h5" Class="ms-2 fw-bold" Color="Color.Primary">ArthaOne</MudText>
+                    <MudSpacer />
+
+                    <MudToggleIconButton @bind-Toggled="@_isDarkMode"
+                                         Icon="@Icons.Material.Filled.LightMode" Color="Color.Warning"
+                                         ToggledIcon="@Icons.Material.Filled.DarkMode" ToggledColor="Color.Default"
+                                         Title="Toggle Theme" Class="me-4" />
+
+                    <MudTooltip Text="Go to Profile">
+                        <MudIconButton DisableRipple="true" Class="pa-0" OnClick="@(() => Navigation.NavigateTo("/profile"))">
+                            <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small" Style="font-weight: bold; border: 2px solid #e2e8f0;">
+                                @GetUserInitial(authState)
+                            </MudAvatar>
+                        </MudIconButton>
+                    </MudTooltip>
+                </MudAppBar>
+
+                <MudDrawer @bind-Open="_drawerOpen" Elevation="2" ClipMode="DrawerClipMode.Always">
+                    <MudDrawerHeader Class="align-items-center">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Primary" Size="Size.Large" Class="me-2" />
+                        <MudText Typo="Typo.h6" Class="fw-bold">Menu</MudText>
+                    </MudDrawerHeader>
+
+                    <MudNavMenu Class="mt-2">
+                        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Overview</MudNavLink>
+                        <MudNavLink Href="/investments" Icon="@Icons.Material.Filled.TrendingUp">Investments</MudNavLink>
+                        <MudNavLink Href="/expenses" Icon="@Icons.Material.Filled.ReceiptLong">Cashflow</MudNavLink>
+                        <MudNavLink Href="/fire-goals" Icon="@Icons.Material.Filled.LocalFireDepartment">FIRE Strategy</MudNavLink>
+                        <MudNavLink Href="/profile" Icon="@Icons.Material.Filled.Person" IconColor="Color.Primary">Profile & Settings</MudNavLink>
+                    </MudNavMenu>
+                </MudDrawer>
+
+                <MudMainContent Style="min-height: 100vh;">
+                    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pt-4 pb-8">
+                        @Body
+                    </MudContainer>
+                </MudMainContent>
+            </MudLayout>
+        </Authorized>
+
+        <NotAuthorized>
+            <div class="d-flex justify-center align-center" style="height: 100vh;">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+</CascadingAuthenticationState>
+
+@code {
+    bool _drawerOpen = true;
+
+    // Defaulting to Dark Mode! No complex system checks needed.
+    private bool _isDarkMode = true;
+
+    void DrawerToggle() => _drawerOpen = !_drawerOpen;
+
+    private string GetUserEmail(AuthenticationState context)
+    {
+        return context.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value ?? "User";
+    }
+
+    private string GetUserInitial(AuthenticationState context)
+    {
+        var email = GetUserEmail(context);
+        return string.IsNullOrEmpty(email) || email == "User" ? "U" : email[0].ToString().ToUpper();
+    }
+
+    // Custom Theme with Dark Mode Palette
+    MudTheme _currentTheme = new MudTheme()
+    {
+        PaletteLight = new PaletteLight()
+        {
+            Primary = "#1e3a8a",
+            Secondary = "#f59e0b",
+            AppbarBackground = "#ffffff",
+            AppbarText = "#1f2937",
+            Background = "#f8fafc",
+            Surface = "#ffffff",
+            TextPrimary = "#111827",
+            TextSecondary = "#4b5563",
+            Success = "#10b981",
+            Warning = "#f59e0b",
+            Error = "#ef4444"
+        },
+        PaletteDark = new PaletteDark()
+        {
+            Primary = "#3b82f6",
+            Secondary = "#f59e0b",
+            AppbarBackground = "#111827",
+            AppbarText = "#f9fafb",
+            Background = "#0f172a",
+            Surface = "#1e293b",
+            TextPrimary = "#f9fafb",
+            TextSecondary = "#94a3b8",
+            Success = "#10b981",
+            Warning = "#f59e0b",
+            Error = "#ef4444",
+            DrawerBackground = "#111827"
+        },
+        Typography = new Typography()
+        {
+            Default = new DefaultTypography() { FontFamily = new[] { "Inter", "Helvetica", "Arial", "sans-serif" } }
+        }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uriString = Navigation.Uri;
+        if (uriString.Contains("access_token") || uriString.Contains("code="))
+        {
+            try { await SupabaseClient.Auth.GetSessionFromUrl(Navigation.ToAbsoluteUri(uriString)); }
+            catch { }
+        }
+
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity == null || !authState.User.Identity.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+}

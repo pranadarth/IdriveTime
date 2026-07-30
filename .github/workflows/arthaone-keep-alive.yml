@@ -1,4 +1,4 @@
-name: Keep Supabase Alive (Write Mode)
+name: Keep Supabase Alive (Write & Clean)
 
 on:
   schedule:
@@ -10,7 +10,14 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Insert Ping to Database
+      - name: 1. Delete old logs (Cleanup)
+        run: |
+          curl -s -X DELETE \
+            "https://hkxzrwutrfkboqzgcktg.supabase.co/rest/v1/keep_alive_logs?id=not.is.null" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+
+      - name: 2. Insert new ping to Database (Keep Active)
         run: |
           curl -s -X POST \
             "https://hkxzrwutrfkboqzgcktg.supabase.co/rest/v1/keep_alive_logs" \

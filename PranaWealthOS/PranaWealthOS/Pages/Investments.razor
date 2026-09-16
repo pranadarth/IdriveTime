@@ -1,0 +1,632 @@
+﻿@page "/investments"
+@inject Blazored.LocalStorage.ILocalStorageService LocalStorage
+@using System.Data
+@using System.IO
+@using System.Text.RegularExpressions
+@using ExcelDataReader
+@using Microsoft.AspNetCore.Components.Authorization
+@using PranaWealthOS.Models
+@using MudBlazor
+@inject ISnackbar Snackbar
+
+<PageTitle>Investment Portfolio</PageTitle>
+
+<div class="container-fluid mt-4" style="font-family: 'Inter', sans-serif; max-width: 1400px;">
+    <div class="d-flex flex-wrap justify-space-between align-center mb-6 gap-4">
+        <div>
+            <h2 class="text-success m-0 fw-bold d-flex align-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.Insights" Size="Size.Large" /> Investment Engine
+            </h2>
+            <MudText Typo="Typo.body2" Class="text-muted mt-1">Manage all assets, categorize holdings, and view deep analytics.</MudText>
+        </div>
+        <MudPaper Elevation="0" Class="pa-3 mud-theme-surface rounded-lg border">
+            <MudText Typo="Typo.h5" Color="Color.Primary" Class="fw-bold m-0">
+                Total Wealth: ₹@TotalNetWorth.ToString("N0")
+            </MudText>
+        </MudPaper>
+    </div>
+
+    <MudTabs @bind-ActivePanelIndex="activeTabIndex" KeepPanelsAlive="false" Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4" HeaderClass="mb-6" SliderColor="Color.Primary" Position="Position.Top">
+        <MudTabPanel Text="Analytics" Icon="@Icons.Material.Filled.Insights">
+            <div class="pt-6">
+                <MudGrid Spacing="4">
+
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-6 h-100" Elevation="0" Outlined="true" Style="border-left: 5px solid #594ae2;">
+                        <MudText Typo="Typo.h6" Class="fw-bold mb-2">True CAGR (XIRR) Estimator</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted mb-4">Input your average portfolio age to calculate real historical compounding.</MudText>
+
+                        <MudNumericField @bind-Value="PortfolioAgeMonths" @bind-Value:after="SaveAgeAsync" Label="Average Portfolio Age (Months)" Variant="Variant.Outlined" Min="1" Class="mb-4" />
+
+                        <div class="d-flex justify-space-between align-center border-bottom pb-2 mb-2">
+                            <MudText Typo="Typo.body2" Class="text-muted">Mutual Funds CAGR:</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Success" Class="fw-bold">@CalculatedMfCagr.ToString("F2")%</MudText>
+                        </div>
+                        <div class="d-flex justify-space-between align-center border-bottom pb-2 mb-2">
+                            <MudText Typo="Typo.body2" Class="text-muted">Direct Stocks CAGR:</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Info" Class="fw-bold">@CalculatedStockCagr.ToString("F2")%</MudText>
+                        </div>
+                        <div class="d-flex justify-space-between align-center mt-3">
+                            <MudText Typo="Typo.subtitle1" Class="fw-bold">Total Core Equity Return:</MudText>
+                            <MudText Typo="Typo.h5" Color="Color.Primary" Class="fw-bold">@CalculatedTotalCagr.ToString("F2")%</MudText>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-6 h-100" Elevation="0" Outlined="true">
+                        <MudText Typo="Typo.h6" Class="fw-bold mb-4 text-center">MF Strategy Allocation</MudText>
+                        @{
+                            var validMFs = MFs.Where(m => !m.IsShortTermGoal && m.CurrentValue > 0).ToList();
+                            if (validMFs.Any())
+                            {
+                                var totalMF = validMFs.Sum(m => m.CurrentValue);
+                                var groupedMFs = validMFs.GroupBy(m => string.IsNullOrWhiteSpace(m.Category) ? "Uncategorized" : m.Category)
+                                .OrderByDescending(g => g.Sum(m => m.CurrentValue));
+
+                                <div class="d-flex flex-column gap-4 mt-2">
+                                    @foreach (var group in groupedMFs)
+                                    {
+                                        var val = group.Sum(m => m.CurrentValue);
+                                        var pct = totalMF > 0 ? (double)(val / totalMF * 100) : 0;
+
+                                        <div>
+                                            <div class="d-flex justify-space-between align-center mb-1">
+                                                <span class="fw-bold" style="font-size: 0.9rem;">@group.Key</span>
+                                                <span class="text-muted fw-bold" style="font-size: 0.85rem;">₹@val.ToString("N0") <span class="text-success ms-1">(@pct.ToString("F1")%)</span></span>
+                                            </div>
+                                            <MudProgressLinear Color="Color.Success" Value="@pct" Size="Size.Medium" Class="rounded" />
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center mt-5">
+                                    <MudText Typo="Typo.body2" Class="text-muted">Assign categories to see allocation.</MudText>
+                                </div>
+                            }
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-6 h-100" Elevation="0" Outlined="true">
+                        <MudText Typo="Typo.h6" Class="fw-bold mb-4 text-center">Direct Stock Exposure</MudText>
+                        @{
+                            var validStocks = Stocks.Where(s => !s.IsShortTermGoal && s.ClosingValue > 0).ToList();
+                            if (validStocks.Any())
+                            {
+                                var totalStock = validStocks.Sum(s => s.ClosingValue);
+                                var groupedStocks = validStocks.GroupBy(s => string.IsNullOrWhiteSpace(s.Category) ? "Uncategorized" : s.Category)
+                                .OrderByDescending(g => g.Sum(s => s.ClosingValue));
+
+                                <div class="d-flex flex-column gap-4 mt-2">
+                                    @foreach (var group in groupedStocks)
+                                    {
+                                        var val = group.Sum(s => s.ClosingValue);
+                                        var pct = totalStock > 0 ? (double)(val / totalStock * 100) : 0;
+
+                                        <div>
+                                            <div class="d-flex justify-space-between align-center mb-1">
+                                                <span class="fw-bold" style="font-size: 0.9rem;">@group.Key</span>
+                                                <span class="text-muted fw-bold" style="font-size: 0.85rem;">₹@val.ToString("N0") <span class="text-info ms-1">(@pct.ToString("F1")%)</span></span>
+                                            </div>
+                                            <MudProgressLinear Color="Color.Info" Value="@pct" Size="Size.Medium" Class="rounded" />
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center mt-5">
+                                    <MudText Typo="Typo.body2" Class="text-muted">Assign categories to see allocation.</MudText>
+                                </div>
+                            }
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+            </div>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Holdings" Icon="@Icons.Material.Filled.TableChart">
+            <div class="pt-6">
+                 <MudGrid Spacing="6">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4 h-100" Elevation="0" Outlined="true">
+                        <div class="d-flex flex-wrap justify-space-between align-center mb-4 gap-4">
+                            <MudText Typo="Typo.h6" Class="fw-bold">Mutual Funds (<span class="text-success">₹@MFs.Sum(m => m.CurrentValue).ToString("N0")</span>)</MudText>
+                            <MudTextField @bind-Value="searchStringMFs" Placeholder="Search..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width: 200px;" />
+                        </div>
+                        <MudTable Items="@MFs" Dense="true" Hover="true" Elevation="0" Filter="new Func<MutualFundHolding, bool>(FilterMFs)">
+                            <HeaderContent>
+                                <MudTh>Scheme Name</MudTh>
+                                <MudTh>Category</MudTh>
+                                <MudTh>Exclude (Temp)</MudTh>
+                                <MudTh Style="text-align: right;">Value</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd Class="small">
+                                    @if (context.IsShortTermGoal)
+                                    {
+                                        <span style="text-decoration: line-through; opacity: 0.5;">@context.SchemeName</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@context.SchemeName</span>
+                                    }
+                                </MudTd>
+                                <MudTd>
+                                    <MudSelect T="string" @bind-Value="context.Category" @bind-Value:after="SaveDataAsync" Margin="Margin.Dense" Variant="Variant.Text" Disabled="@context.IsShortTermGoal">
+                                        <MudSelectItem T="string" Value="@("Large Cap")">Large Cap</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Mid/Small Cap")">Mid/Small Cap</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Flexi Cap")">Flexi Cap</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Index/Sector")">Index/Sector</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("International")">International</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Debt/Hybrid")">Debt/Hybrid</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Uncategorized")">Uncategorized</MudSelectItem>
+                                    </MudSelect>
+                                </MudTd>
+                                <MudTd>
+                                    <MudCheckBox @bind-Value="context.IsShortTermGoal" @bind-Value:after="SaveDataAsync" Color="Color.Error" Size="Size.Small" />
+                                </MudTd>
+                                <MudTd Style="text-align: right;" Class="fw-bold">₹@context.CurrentValue.ToString("N0")</MudTd>
+                            </RowTemplate>
+                            <PagerContent><MudTablePager /></PagerContent>
+                        </MudTable>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4 h-100" Elevation="0" Outlined="true">
+                        <div class="d-flex flex-wrap justify-space-between align-center mb-4 gap-4">
+                            <MudText Typo="Typo.h6" Class="fw-bold">Direct Equity (<span class="text-primary">₹@Stocks.Sum(s => s.ClosingValue).ToString("N0")</span>)</MudText>
+                            <MudTextField @bind-Value="searchStringStocks" Placeholder="Search..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width: 200px;" />
+                        </div>
+                        <MudTable Items="@Stocks" Dense="true" Hover="true" Elevation="0" Filter="new Func<StockHolding, bool>(FilterStocks)">
+                            <HeaderContent>
+                                <MudTh>Stock Name</MudTh>
+                                <MudTh>Sector</MudTh>
+                                <MudTh>Exclude (Temp)</MudTh>
+                                <MudTh Style="text-align: right;">Value</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd Class="small">
+                                    @if (context.IsShortTermGoal)
+                                    {
+                                        <span style="text-decoration: line-through; opacity: 0.5;">@context.StockName</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@context.StockName</span>
+                                    }
+                                </MudTd>
+                                <MudTd>
+                                    <MudSelect T="string" @bind-Value="context.Category" @bind-Value:after="SaveDataAsync" Margin="Margin.Dense" Variant="Variant.Text" Disabled="@context.IsShortTermGoal">
+                                        <MudSelectItem T="string" Value="@("Financials")">Financials</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("IT & Tech")">IT & Tech</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("FMCG")">FMCG</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Auto/Manufacturing")">Auto/Manufacturing</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Energy/Infra")">Energy/Infra</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Pharma")">Pharma</MudSelectItem>
+                                        <MudSelectItem T="string" Value="@("Uncategorized")">Uncategorized</MudSelectItem>
+                                    </MudSelect>
+                                </MudTd>
+                                <MudTd>
+                                    <MudCheckBox @bind-Value="context.IsShortTermGoal" @bind-Value:after="SaveDataAsync" Color="Color.Error" Size="Size.Small" />
+                                </MudTd>
+                                <MudTd Style="text-align: right;" Class="fw-bold">₹@context.ClosingValue.ToString("N0")</MudTd>
+                            </RowTemplate>
+                            <PagerContent><MudTablePager /></PagerContent>
+                        </MudTable>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+            </div>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Update Assets" Icon="@Icons.Material.Filled.CloudUpload">
+            <div class="pt-6">
+                <MudText Typo="Typo.h6" Class="fw-bold mb-4">1. Market Linked Assets (Uploads)</MudText>
+                <MudGrid Class="mb-8" Spacing="4">
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="pa-6 text-center h-100 d-flex flex-column justify-center align-center" Outlined="true" Style="border-color: rgba(59, 130, 246, 0.5); background-color: rgba(59, 130, 246, 0.1);">
+                            <MudIcon Icon="@Icons.Material.Filled.ShowChart" Color="Color.Primary" Size="Size.Large" Class="mb-3" />
+                            <MudText Typo="Typo.h6" Class="fw-bold mb-1">Update Stocks</MudText>
+                            <InputFile OnChange="HandleStockUpload" class="form-control mt-3" accept=".xlsx" style="max-width:300px;" />
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="pa-6 text-center h-100 d-flex flex-column justify-center align-center" Outlined="true" Style="border-color: rgba(16, 185, 129, 0.5); background-color: rgba(16, 185, 129, 0.1);">
+                            <MudIcon Icon="@Icons.Material.Filled.PieChart" Color="Color.Success" Size="Size.Large" Class="mb-3" />
+                            <MudText Typo="Typo.h6" Class="fw-bold mb-1">Update Mutual Funds</MudText>
+                            <InputFile OnChange="HandleMFUpload" class="form-control mt-3" accept=".xlsx" style="max-width:300px;" />
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-8" />
+
+                <MudText Typo="Typo.h6" Class="fw-bold mb-4">2. Non-Market Assets</MudText>
+                <MudGrid Spacing="4">
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="pa-5 h-100" Outlined="true">
+                            <div class="d-flex justify-space-between align-center mb-4">
+                                <MudText Typo="Typo.subtitle1" Class="fw-bold text-success">EPF Account</MudText>
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="FetchLatestEpfRate" Disabled="@_isFetchingEpf">
+                                    @if (_isFetchingEpf)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                    }
+                                    Sync Govt Rate
+                                </MudButton>
+                            </div>
+                            <MudNumericField @bind-Value="MyEPF.CurrentValue" Label="Current Balance" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                            <MudNumericField @bind-Value="MyEPF.MonthlyContribution" Label="Monthly SIP (You+Emp)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+                            <MudNumericField @bind-Value="MyEPF.InterestRate" Label="Live Interest Rate (%)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+                            <MudButton Variant="Variant.Outlined" Color="Color.Success" FullWidth OnClick="SaveDataAsync">Save EPF</MudButton>
+                        </MudPaper>
+                    </MudItem>
+
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="pa-5 h-100" Outlined="true">
+                            <MudText Typo="Typo.subtitle1" Class="fw-bold text-info mb-4">Add Recurring Deposit</MudText>
+                            <MudNumericField @bind-Value="TempRD.CurrentValue" Label="Current Value" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                            <MudNumericField @bind-Value="TempRD.MonthlyInvestment" Label="Monthly SIP" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                            <MudGrid Spacing="2" Class="mb-3">
+                                <MudItem xs="6"><MudNumericField @bind-Value="TempRD.InterestRate" Label="Int. %" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                <MudItem xs="6"><MudNumericField @bind-Value="TempRD.MonthsLeft" Label="Months Left" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                            </MudGrid>
+                            <MudButton Variant="Variant.Filled" Color="Color.Info" FullWidth DisableElevation="true" OnClick="AddRD">Add RD</MudButton>
+                        </MudPaper>
+                    </MudItem>
+
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="pa-5 h-100" Outlined="true">
+                            <MudText Typo="Typo.subtitle1" Class="fw-bold text-warning mb-4">Add FD or Bond</MudText>
+                            <MudNumericField @bind-Value="TempFD.Principal" Label="Principal Amount" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                            <MudGrid Spacing="2" Class="mb-3">
+                                <MudItem xs="6"><MudNumericField @bind-Value="TempFD.InterestRate" Label="Int. %" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                <MudItem xs="6"><MudNumericField @bind-Value="TempFD.MonthsDuration" Label="Months Left" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                            </MudGrid>
+                            <MudCheckBox @bind-Value="TempFD.IsBond" Label="Mark as Bond" Color="Color.Primary" Size="Size.Small" Class="mb-2" />
+                            <MudButton Variant="Variant.Filled" Color="Color.Warning" FullWidth DisableElevation="true" OnClick="AddFD">Add FD/Bond</MudButton>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                <MudDivider Class="my-8" />
+                <MudText Typo="Typo.h6" Class="fw-bold mb-4">3. Active Fixed Income</MudText>
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="pa-4 mud-theme-surface" Outlined="true" Style="border-radius: 12px;">
+                            <MudText Typo="Typo.subtitle1" Class="fw-bold mb-3 text-info">Recurring Deposits</MudText>
+                            @if (MyRDs.Any())
+                            {
+                                <MudList T="string" Dense="true" Class="py-0">
+                                    @foreach (var rd in MyRDs)
+                                    {
+                                        <MudListItem T="string" Class="px-2">
+                                            <div class="d-flex justify-space-between align-center w-100">
+                                                <div>
+                                                    <MudText Typo="Typo.body2" Class="fw-bold">₹@rd.MonthlyInvestment.ToString("N0") / month</MudText>
+                                                    <MudText Typo="Typo.caption" Class="text-muted">@rd.InterestRate% Int. • @rd.MonthsLeft Mos Left</MudText>
+                                                </div>
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteAsset(rd.Id))" />
+                                            </div>
+                                        </MudListItem>
+                                        <MudDivider />
+                                    }
+                                </MudList>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Class="text-muted">No RDs added yet.</MudText>
+                            }
+                        </MudPaper>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="pa-4 mud-theme-surface" Outlined="true" Style="border-radius: 12px;">
+                            <MudText Typo="Typo.subtitle1" Class="fw-bold mb-3 text-warning">FDs & Bonds</MudText>
+                            @if (MyFDs.Any())
+                            {
+                                <MudList T="string" Dense="true" Class="py-0">
+                                    @foreach (var fd in MyFDs)
+                                    {
+                                        <MudListItem T="string" Class="px-2">
+                                            <div class="d-flex justify-space-between align-center w-100">
+                                                <div>
+                                                    <MudText Typo="Typo.body2" Class="fw-bold">₹@fd.Principal.ToString("N0") @(fd.IsBond ? "(Bond)" : "(FD)")</MudText>
+                                                    <MudText Typo="Typo.caption" Class="text-muted">@fd.InterestRate% Int. • @fd.MonthsDuration Mos Left</MudText>
+                                                </div>
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => DeleteAsset(fd.Id))" />
+                                            </div>
+                                        </MudListItem>
+                                        <MudDivider />
+                                    }
+                                </MudList>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Class="text-muted">No FDs or Bonds added yet.</MudText>
+                            }
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            </div>
+        </MudTabPanel>
+    </MudTabs>
+
+    <MudFab Color="Color.Primary"
+            StartIcon="@Icons.Material.Filled.Add"
+            Class="position-fixed"
+            Style="bottom: 24px; right: 24px; z-index: 100;"
+            OnClick="@(() => activeTabIndex = 2)" />
+</div>
+
+@code {
+    private string CurrentUserId = "";
+    private int activeTabIndex = 0;
+
+    // UI Data Lists
+    private List<StockHolding> Stocks = new();
+    private List<MutualFundHolding> MFs = new();
+    private EPFData MyEPF = new();
+    private List<RecurringDeposit> MyRDs = new();
+    private List<FixedDeposit> MyFDs = new();
+    private List<PhysicalAsset> MyPhysicalAssets = new();
+
+    // Temp Form Variables
+    private RecurringDeposit TempRD = new();
+    private FixedDeposit TempFD = new();
+    private string searchStringStocks = "";
+    private string searchStringMFs = "";
+    private int PortfolioAgeMonths = 36;
+    private bool _isFetchingEpf = false;
+
+    // Computed Totals
+    private decimal CoreEquityWealth => Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.ClosingValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue);
+    private decimal ShortTermWealth => Stocks.Where(s => s.IsShortTermGoal).Sum(s => s.ClosingValue) + MFs.Where(m => m.IsShortTermGoal).Sum(m => m.CurrentValue);
+    private decimal DebtWealth => MyEPF.CurrentValue + MyRDs.Sum(r => r.CurrentValue) + MyFDs.Sum(f => f.Principal);
+    private decimal TotalNetWorth => CoreEquityWealth + ShortTermWealth + DebtWealth + MyPhysicalAssets.Sum(p => p.Value);
+
+    // Specific CAGR Calculations
+    private double CalculatedMfCagr => ComputeCagr(MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.InvestedValue), MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue));
+    private double CalculatedStockCagr => ComputeCagr(Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.InvestedValue), Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.ClosingValue));
+    private double CalculatedTotalCagr => ComputeCagr(Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.InvestedValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.InvestedValue), CoreEquityWealth);
+
+    private double ComputeCagr(decimal invested, decimal current)
+    {
+        if (invested == 0 || PortfolioAgeMonths == 0) return 0.0;
+        double ratio = (double)(current / invested);
+        double power = 12.0 / PortfolioAgeMonths;
+        return (Math.Pow(ratio, power) - 1) * 100;
+    }
+
+    [Inject] private AuthenticationStateProvider AuthProvider { get; set; }
+    [Inject] private Supabase.Client SupabaseClient { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        CurrentUserId = authState.User.Claims.FirstOrDefault(c => System.Security.Claims.ClaimTypes.NameIdentifier == c.Type)?.Value ?? "";
+
+        var savedAge = await LocalStorage.GetItemAsync<int>("portfolioAge");
+        if (savedAge > 0) PortfolioAgeMonths = savedAge;
+
+        await LoadAssetsFromCloud();
+    }
+
+    private async Task LoadAssetsFromCloud()
+    {
+        if (string.IsNullOrEmpty(CurrentUserId)) return;
+
+        var response = await SupabaseClient.From<AssetModel>().Where(x => x.UserId == CurrentUserId).Get();
+        var allAssets = response.Models;
+
+        // Map Cloud Assets to UI Lists
+        Stocks = allAssets.Where(a => a.AssetType == "Stock").Select(a => new StockHolding { Id = a.Id, StockName = a.Name, InvestedValue = a.InvestedValue, ClosingValue = a.CurrentValue, Category = a.Category, IsShortTermGoal = a.IsShortTermGoal }).ToList();
+        MFs = allAssets.Where(a => a.AssetType == "MF").Select(a => new MutualFundHolding { Id = a.Id, SchemeName = a.Name, InvestedValue = a.InvestedValue, CurrentValue = a.CurrentValue, Category = a.Category, IsShortTermGoal = a.IsShortTermGoal }).ToList();
+        MyRDs = allAssets.Where(a => a.AssetType == "RD").Select(a => new RecurringDeposit { Id = a.Id, CurrentValue = a.CurrentValue, MonthlyInvestment = a.MonthlyContribution, InterestRate = a.InterestRate, MonthsLeft = a.MonthsDuration }).ToList();
+        MyFDs = allAssets.Where(a => a.AssetType == "FD").Select(a => new FixedDeposit { Id = a.Id, Principal = a.InvestedValue, InterestRate = a.InterestRate, MonthsDuration = a.MonthsDuration, IsBond = a.IsBond }).ToList();
+
+        var epfCloud = allAssets.FirstOrDefault(a => a.AssetType == "EPF");
+        if (epfCloud != null) MyEPF = new EPFData { Id = epfCloud.Id, CurrentValue = epfCloud.CurrentValue, MonthlyContribution = epfCloud.MonthlyContribution, InterestRate = epfCloud.InterestRate };
+        else MyEPF = new EPFData();
+
+        StateHasChanged();
+    }
+
+    private async Task DeleteAsset(string id)
+    {
+        try
+        {
+            await SupabaseClient.From<AssetModel>().Where(x => x.Id == id).Delete();
+            Snackbar.Add("Asset removed successfully.", Severity.Success);
+            await LoadAssetsFromCloud(); // Refresh the UI immediately
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error removing asset: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SaveDataAsync()
+    {
+        if (string.IsNullOrEmpty(CurrentUserId)) return;
+
+        try
+        {
+            // 1. Save EPF Safely
+            if (!string.IsNullOrEmpty(MyEPF.Id))
+            {
+                await SupabaseClient.From<AssetModel>()
+                    .Where(x => x.Id == MyEPF.Id)
+                    .Set(x => x.CurrentValue, MyEPF.CurrentValue)
+                    .Set(x => x.MonthlyContribution, MyEPF.MonthlyContribution)
+                    .Set(x => x.InterestRate, MyEPF.InterestRate)
+                    .Update();
+            }
+            else if (MyEPF.CurrentValue > 0 || MyEPF.MonthlyContribution > 0)
+            {
+                var epfAsset = new AssetModel { UserId = CurrentUserId, AssetType = "EPF", Name = "Employee Provident Fund", CurrentValue = MyEPF.CurrentValue, MonthlyContribution = MyEPF.MonthlyContribution, InterestRate = MyEPF.InterestRate };
+                var res = await SupabaseClient.From<AssetModel>().Insert(epfAsset);
+                MyEPF.Id = res.Models.FirstOrDefault()?.Id;
+            }
+
+            // 2. Update Stock Categories/Tags Safely
+            foreach (var s in Stocks.Where(x => !string.IsNullOrEmpty(x.Id)))
+            {
+                await SupabaseClient.From<AssetModel>()
+                    .Where(x => x.Id == s.Id)
+                    .Set(x => x.Category, s.Category ?? "Uncategorized")
+                    .Set(x => x.IsShortTermGoal, s.IsShortTermGoal)
+                    .Update();
+            }
+
+            // 3. Update MF Categories/Tags Safely
+            foreach (var m in MFs.Where(x => !string.IsNullOrEmpty(x.Id)))
+            {
+                await SupabaseClient.From<AssetModel>()
+                    .Where(x => x.Id == m.Id)
+                    .Set(x => x.Category, m.Category ?? "Uncategorized")
+                    .Set(x => x.IsShortTermGoal, m.IsShortTermGoal)
+                    .Update();
+            }
+
+            Snackbar.Add("Changes saved to cloud successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving data: {ex.Message}", Severity.Error);
+        }
+
+        await LoadAssetsFromCloud();
+    }
+
+    private async Task SaveAgeAsync()
+    {
+        await LocalStorage.SetItemAsync("portfolioAge", PortfolioAgeMonths);
+    }
+
+    private async Task FetchLatestEpfRate()
+    {
+        _isFetchingEpf = true;
+        StateHasChanged();
+        await Task.Delay(1500);
+        MyEPF.InterestRate = 8.25;
+        await SaveDataAsync();
+        _isFetchingEpf = false;
+    }
+
+    private async Task AddRD()
+    {
+        if (TempRD.CurrentValue > 0)
+        {
+            var rdAsset = new AssetModel { UserId = CurrentUserId, AssetType = "RD", Name = "Recurring Deposit", CurrentValue = TempRD.CurrentValue, MonthlyContribution = TempRD.MonthlyInvestment, InterestRate = TempRD.InterestRate, MonthsDuration = TempRD.MonthsLeft };
+            await SupabaseClient.From<AssetModel>().Insert(rdAsset);
+            TempRD = new();
+            await LoadAssetsFromCloud();
+        }
+    }
+
+    private async Task AddFD()
+    {
+        if (TempFD.Principal > 0)
+        {
+            var fdAsset = new AssetModel { UserId = CurrentUserId, AssetType = "FD", Name = TempFD.IsBond ? "Govt/Corp Bond" : "Fixed Deposit", InvestedValue = TempFD.Principal, CurrentValue = TempFD.Principal, InterestRate = TempFD.InterestRate, MonthsDuration = TempFD.MonthsDuration, IsBond = TempFD.IsBond };
+            await SupabaseClient.From<AssetModel>().Insert(fdAsset);
+            TempFD = new();
+            await LoadAssetsFromCloud();
+        }
+    }
+
+    private bool FilterStocks(StockHolding element) => string.IsNullOrWhiteSpace(searchStringStocks) || element.StockName.Contains(searchStringStocks, StringComparison.OrdinalIgnoreCase);
+    private bool FilterMFs(MutualFundHolding element) => string.IsNullOrWhiteSpace(searchStringMFs) || element.SchemeName.Contains(searchStringMFs, StringComparison.OrdinalIgnoreCase);
+
+    private string CleanName(string input) => string.IsNullOrWhiteSpace(input) ? "" : Regex.Replace(input.Replace('\u00A0', ' '), @"\s+", " ").Trim();
+
+    private async Task HandleStockUpload(InputFileChangeEventArgs e)
+    {
+        using var stream = e.File.OpenReadStream();
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        ms.Position = 0;
+        using var reader = ExcelReaderFactory.CreateReader(ms);
+        var table = reader.AsDataSet().Tables[0];
+        bool startReading = false;
+
+        var newCloudStocks = new List<AssetModel>();
+
+        foreach (DataRow row in table.Rows)
+        {
+            string firstCell = CleanName(row[0]?.ToString());
+            if (firstCell == "Stock Name") { startReading = true; continue; }
+            if (!startReading || string.IsNullOrWhiteSpace(firstCell) || firstCell == "null") continue;
+
+            decimal closing = Convert.ToDecimal(row[6]);
+            decimal invested = closing;
+            try { invested = Convert.ToDecimal(row[5]); } catch { }
+
+            newCloudStocks.Add(new AssetModel { UserId = CurrentUserId, AssetType = "Stock", Name = firstCell, InvestedValue = invested, CurrentValue = closing });
+        }
+
+        var newGrouped = newCloudStocks.GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new AssetModel { UserId = CurrentUserId, AssetType = "Stock", Name = g.Key, InvestedValue = g.Sum(s => s.InvestedValue), CurrentValue = g.Sum(s => s.CurrentValue) }).ToList();
+
+        foreach (var stock in newGrouped)
+        {
+            var existing = Stocks.FirstOrDefault(e => e.StockName.Equals(stock.Name, StringComparison.OrdinalIgnoreCase));
+            if (existing != null) { stock.Category = existing.Category; stock.IsShortTermGoal = existing.IsShortTermGoal; }
+        }
+
+        await SupabaseClient.From<AssetModel>().Where(x => x.UserId == CurrentUserId && x.AssetType == "Stock").Delete();
+        await SupabaseClient.From<AssetModel>().Insert(newGrouped);
+
+        await LoadAssetsFromCloud();
+    }
+
+    private async Task HandleMFUpload(InputFileChangeEventArgs e)
+    {
+        using var stream = e.File.OpenReadStream();
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        ms.Position = 0;
+        using var reader = ExcelReaderFactory.CreateReader(ms);
+        var table = reader.AsDataSet().Tables[0];
+        bool startReading = false;
+
+        var newCloudMFs = new List<AssetModel>();
+
+        foreach (DataRow row in table.Rows)
+        {
+            string firstCell = CleanName(row[0]?.ToString());
+            if (firstCell == "Scheme Name") { startReading = true; continue; }
+            if (!startReading || string.IsNullOrWhiteSpace(firstCell)) continue;
+
+            decimal current = Convert.ToDecimal(row[8]);
+            decimal invested = current;
+            try { invested = Convert.ToDecimal(row[7]); } catch { }
+
+            newCloudMFs.Add(new AssetModel { UserId = CurrentUserId, AssetType = "MF", Name = firstCell, InvestedValue = invested, CurrentValue = current });
+        }
+
+        var newGrouped = newCloudMFs.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new AssetModel { UserId = CurrentUserId, AssetType = "MF", Name = g.Key, InvestedValue = g.Sum(m => m.InvestedValue), CurrentValue = g.Sum(m => m.CurrentValue) }).ToList();
+
+        foreach (var mf in newGrouped)
+        {
+            var existing = MFs.FirstOrDefault(e => e.SchemeName.Equals(mf.Name, StringComparison.OrdinalIgnoreCase));
+            if (existing != null) { mf.Category = existing.Category; mf.IsShortTermGoal = existing.IsShortTermGoal; }
+        }
+
+        await SupabaseClient.From<AssetModel>().Where(x => x.UserId == CurrentUserId && x.AssetType == "MF").Delete();
+        await SupabaseClient.From<AssetModel>().Insert(newGrouped);
+
+        await LoadAssetsFromCloud();
+    }
+}

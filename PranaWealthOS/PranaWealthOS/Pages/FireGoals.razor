@@ -1,0 +1,205 @@
+﻿@page "/fire-goals"
+@inject Blazored.LocalStorage.ILocalStorageService LocalStorage
+@inject Supabase.Client SupabaseClient
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthProvider
+@using MudBlazor
+@using PranaWealthOS.Models
+@using System.Security.Claims
+
+<PageTitle>FIRE Strategy</PageTitle>
+
+<div class="container-fluid mt-4" style="font-family: 'Inter', sans-serif; max-width: 1400px;">
+    <div class="mb-6">
+        <h2 class="text-error m-0 fw-bold d-flex align-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.LocalFireDepartment" Size="Size.Large" /> FIRE Strategy & Projections
+        </h2>
+        <MudText Typo="Typo.body2" Class="text-muted mt-1">Stress-test your retirement timeline based on your Profile Assumptions.</MudText>
+    </div>
+
+    <div class="d-flex align-center gap-2 mb-4">
+        <MudTooltip Text="Both the Dashboard and this page use Granular Asset Compounding. Equity grows at your True CAGR, EPF at Govt Rate, and Debt at 7%.">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" Size="Size.Small" />
+        </MudTooltip>
+        <MudText Typo="Typo.caption" Class="fw-bold text-muted">Simulation Methodology: Granular Asset Compounding</MudText>
+    </div>
+
+    <MudGrid Spacing="6">
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-6 h-100" Elevation="0" Outlined="true" Style="border-top: 5px solid #ef4444;">
+                <MudText Typo="Typo.h6" Class="fw-bold mb-4">Simulation Variables</MudText>
+
+                <MudNumericField @bind-Value="MonthlyExpenses" Label="Monthly Target Expenses (₹)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+                <MudNumericField @bind-Value="Settings.MonthlySIP" Label="Total Monthly Investment SIP (₹)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+
+                <MudDivider Class="my-4" />
+
+                <MudText Typo="Typo.caption" Class="text-muted mb-2 d-block">Pulled from Profile Settings:</MudText>
+                <MudNumericField @bind-Value="Settings.ExpectedEquityReturn" Label="Expected Portfolio CAGR (%)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+                <MudNumericField @bind-Value="Settings.ExpectedInflation" Label="Expected Inflation (%)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4" />
+                <MudSelect T="double" @bind-Value="Settings.SafeWithdrawalRate" Label="Safe Withdrawal Rate (SWR)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-4">
+                    <MudSelectItem T="double" Value="4.0">4.0% (25x Target)</MudSelectItem>
+                    <MudSelectItem T="double" Value="3.5">3.5% (28x Target)</MudSelectItem>
+                    <MudSelectItem T="double" Value="3.0">3.0% (33x Target)</MudSelectItem>
+                </MudSelect>
+
+                <MudButton Variant="Variant.Filled" Color="Color.Error" FullWidth Size="Size.Large" OnClick="RunProjection">Recalculate Journey</MudButton>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-6 mb-6 text-center text-white" Elevation="0" Style="border-radius: 12px; background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);">
+                <MudText Typo="Typo.h5" Class="fw-bold mb-2">You will reach FIRE in</MudText>
+                <MudText Typo="Typo.h2" Class="fw-bold mb-2">@YearsToFire Years</MudText>
+                <MudText Typo="Typo.body1">At a @Settings.SafeWithdrawalRate% withdrawal rate, your target corpus is <b>₹@StartingFireTarget.ToString("N0")</b> (in today's money).</MudText>
+            </MudPaper>
+
+            <MudPaper Class="pa-4" Elevation="0" Outlined="true">
+                <MudText Typo="Typo.h6" Class="fw-bold mb-4 px-2">Year-by-Year Growth vs Inflation</MudText>
+
+                <MudTable Items="@Projections" Dense="true" Hover="true" Elevation="0" FixedHeader="true" Height="400px">
+                    <HeaderContent>
+                        <MudTh>Year</MudTh>
+                        <MudTh>Your Age</MudTh>
+                        <MudTh Style="text-align: right;">Portfolio Value</MudTh>
+                        <MudTh Style="text-align: right;">Inflated Target Needed</MudTh>
+                        <MudTh Style="text-align: center;">Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>Year @context.YearNumber</MudTd>
+                        <MudTd>@(CurrentAge + context.YearNumber)</MudTd>
+                        <MudTd Style="text-align: right;" Class="text-success fw-bold">₹@context.PortfolioValue.ToString("N0")</MudTd>
+                        <MudTd Style="text-align: right;" Class="text-error">₹@context.TargetValue.ToString("N0")</MudTd>
+                        <MudTd Style="text-align: center;">
+                            @if (context.PortfolioValue >= context.TargetValue)
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">FIRE Achieved 🔥</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Default" Size="Size.Small">Accumulating</MudChip>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+@code {
+    private decimal CoreNetWorth = 0;
+    private UserSettings Settings = new();
+
+    private int CurrentAge = 30;
+    private decimal MonthlyExpenses = 30000;
+
+    private List<StockHolding> Stocks = new();
+    private List<MutualFundHolding> MFs = new();
+    private EPFData MyEPF = new();
+    private List<RecurringDeposit> MyRDs = new();
+    private List<FixedDeposit> MyFDs = new();
+    private List<PhysicalAsset> MyPhysicalAssets = new();
+
+    private int YearsToFire = 0;
+    private decimal StartingFireTarget = 0;
+    private List<ProjectionYear> Projections = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Get Logged In User
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var currentUserId = authState.User.Claims.FirstOrDefault(c => ClaimTypes.NameIdentifier == c.Type)?.Value ?? "";
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        // 2. Fetch Settings from Cloud
+        var settingsResponse = await SupabaseClient.From<UserSettings>().Where(x => x.Id == currentUserId).Get();
+        Settings = settingsResponse.Models.FirstOrDefault() ?? new UserSettings();
+
+        if (Settings.DateOfBirth.HasValue)
+        {
+            CurrentAge = DateTime.Today.Year - Settings.DateOfBirth.Value.Year;
+        }
+
+        // 3. Fetch Expenses from Cloud (Defaulting to Mandatory/Essential Expenses for FIRE targets)
+        var expensesResponse = await SupabaseClient.From<ExpenseItem>().Where(x => x.UserId == currentUserId).Get();
+        if (expensesResponse.Models.Any())
+        {
+            // By default, FIRE relies on your Mandatory (Essential) expenses!
+            MonthlyExpenses = expensesResponse.Models.Where(e => e.IsMandatory).Sum(e => e.Amount);
+            if (MonthlyExpenses == 0) MonthlyExpenses = expensesResponse.Models.Sum(e => e.Amount); // Fallback if they didn't tag any
+        }
+
+        // 4. Fetch All Assets from Cloud
+        var assetsResponse = await SupabaseClient.From<AssetModel>().Where(x => x.UserId == currentUserId).Get();
+        var allAssets = assetsResponse.Models;
+
+        Stocks = allAssets.Where(a => a.AssetType == "Stock").Select(a => new StockHolding { Id = a.Id, StockName = a.Name, InvestedValue = a.InvestedValue, ClosingValue = a.CurrentValue, Category = a.Category, IsShortTermGoal = a.IsShortTermGoal }).ToList();
+        MFs = allAssets.Where(a => a.AssetType == "MF").Select(a => new MutualFundHolding { Id = a.Id, SchemeName = a.Name, InvestedValue = a.InvestedValue, CurrentValue = a.CurrentValue, Category = a.Category, IsShortTermGoal = a.IsShortTermGoal }).ToList();
+        MyRDs = allAssets.Where(a => a.AssetType == "RD").Select(a => new RecurringDeposit { Id = a.Id, CurrentValue = a.CurrentValue, MonthlyInvestment = a.MonthlyContribution, InterestRate = a.InterestRate, MonthsLeft = a.MonthsDuration }).ToList();
+        MyFDs = allAssets.Where(a => a.AssetType == "FD").Select(a => new FixedDeposit { Id = a.Id, Principal = a.InvestedValue, InterestRate = a.InterestRate, MonthsDuration = a.MonthsDuration, IsBond = a.IsBond }).ToList();
+        MyPhysicalAssets = allAssets.Where(a => a.AssetType == "Physical").Select(a => new PhysicalAsset { Id = a.Id, Name = a.Name, Value = a.CurrentValue }).ToList();
+
+        var epfCloud = allAssets.FirstOrDefault(a => a.AssetType == "EPF");
+        MyEPF = epfCloud != null ? new EPFData { Id = epfCloud.Id, CurrentValue = epfCloud.CurrentValue, MonthlyContribution = epfCloud.MonthlyContribution, InterestRate = epfCloud.InterestRate } : new EPFData();
+
+        CoreNetWorth = Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.ClosingValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue) + MyEPF.CurrentValue + MyRDs.Sum(r => r.CurrentValue) + MyFDs.Sum(f => f.Principal) + MyPhysicalAssets.Sum(p => p.Value);
+
+        // Calculate True XIRR based on Local Storage Portfolio Age
+        int age = await LocalStorage.GetItemAsync<int>("portfolioAge");
+        if (age > 0)
+        {
+            decimal totalInv = Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.InvestedValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.InvestedValue);
+            if (totalInv > 0)
+            {
+                decimal equityWealth = Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.ClosingValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue);
+                double ratio = (double)(equityWealth / totalInv);
+                Settings.ExpectedEquityReturn = (Math.Pow(ratio, 12.0 / age) - 1) * 100;
+            }
+        }
+
+        RunProjection();
+    }
+
+    private void RunProjection()
+    {
+        Projections.Clear();
+        decimal annualExpenses = MonthlyExpenses * 12;
+        StartingFireTarget = annualExpenses * (decimal)(100.0 / Settings.SafeWithdrawalRate);
+
+        decimal simEquity = Stocks.Where(s => !s.IsShortTermGoal).Sum(s => s.ClosingValue) + MFs.Where(m => !m.IsShortTermGoal).Sum(m => m.CurrentValue);
+        decimal simEPF = MyEPF.CurrentValue;
+        decimal simDebt = MyFDs.Sum(f => f.Principal);
+        decimal simPhysical = MyPhysicalAssets.Sum(p => p.Value);
+
+        var simRDs = MyRDs.Select(r => new RecurringDeposit { CurrentValue = r.CurrentValue, MonthlyInvestment = r.MonthlyInvestment, InterestRate = r.InterestRate, MonthsLeft = r.MonthsLeft }).ToList();
+        var simFDs = MyFDs.Select(f => new FixedDeposit { Principal = f.Principal, InterestRate = f.InterestRate, MonthsDuration = f.MonthsDuration }).ToList();
+
+        decimal currentTarget = StartingFireTarget;
+        bool fireReached = false;
+        YearsToFire = 0;
+
+        for (int year = 1; year <= 40; year++)
+        {
+            for (int m = 0; m < 12; m++)
+            {
+                simEquity += Settings.MonthlySIP;
+                simEquity *= (decimal)(1 + (Settings.ExpectedEquityReturn / 100 / 12));
+                simEPF += MyEPF.MonthlyContribution;
+                simEPF *= (decimal)(1 + (MyEPF.InterestRate / 100 / 12));
+                simDebt *= (decimal)(1 + (7.0 / 100 / 12));
+
+                foreach (var fd in simFDs.Where(f => f.MonthsDuration > 0)) { fd.Principal *= (decimal)(1 + (fd.InterestRate / 100 / 12)); fd.MonthsDuration--; if (fd.MonthsDuration == 0) { simDebt += fd.Principal; fd.Principal = 0; } }
+                foreach (var rd in simRDs.Where(r => r.MonthsLeft > 0)) { rd.CurrentValue += rd.MonthlyInvestment; rd.CurrentValue *= (decimal)(1 + (rd.InterestRate / 100 / 12)); rd.MonthsLeft--; if (rd.MonthsLeft == 0) { simDebt += rd.CurrentValue; rd.CurrentValue = 0; } }
+            }
+
+            currentTarget = currentTarget * (decimal)(1 + (Settings.ExpectedInflation / 100.0));
+            decimal currentPortfolio = simEquity + simEPF + simDebt + simPhysical + simRDs.Sum(r => r.CurrentValue) + simFDs.Sum(f => f.Principal);
+
+            Projections.Add(new ProjectionYear { YearNumber = year, PortfolioValue = currentPortfolio, TargetValue = currentTarget });
+
+            if (currentPortfolio >= currentTarget && !fireReached) { YearsToFire = year; fireReached = true; }
+        }
+        if (!fireReached) YearsToFire = 40;
+        StateHasChanged();
+    }
+}

@@ -10,6 +10,10 @@
     <SolidColorBrush x:Key="BorderBrushColor" Color="Gray" />
     <SolidColorBrush x:Key="ScrollThumbColor" Color="#585c5e" />
     <SolidColorBrush x:Key="ScrollTrackColor" Color="#E0E0E0" />
-    <SolidColorBrush x:Key="PlaceholderForeground" Color="#808080" />
+    <SolidColorBrush x:Key="PlaceholderForeground" Color="#6E6E6E" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#0078D7" />
+    <SolidColorBrush x:Key="SubtleBorderBrush" Color="#DADADA" />
+    <SolidColorBrush x:Key="TabHoverBackground" Color="#E4E4E4" />
+    <SolidColorBrush x:Key="LogBackground" Color="#FFFFFF" />
 
 </ResourceDictionary>

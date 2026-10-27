@@ -1,26 +1,15 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Windows.Threading;
-using Path = System.IO.Path;
 
 namespace LiveLogs
 {
@@ -29,14 +18,8 @@ namespace LiveLogs
     /// </summary>
     public partial class MainWindow : Window
     {
-        private string logFilePath;
-        private FileSystemWatcher watcher;
-        private long lastPosition = 0;
-        private string fullLogContent = "";
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
-        private List<int> _matchIndices = new List<int>();
-        private int _currentMatchPosition = -1;
-
+        private readonly DispatcherTimer _searchDebounce;
 
         [DllImport("dwmapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
         public static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
@@ -44,7 +27,22 @@ namespace LiveLogs
         public MainWindow()
         {
             InitializeComponent();
+            _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+            _searchDebounce.Tick += async (s, e) =>
+            {
+                _searchDebounce.Stop();
+                var tab = CurrentLogTab;
+                if (tab != null)
+                    MatchCountText.Text = await tab.SearchAsync(SearchTextBox.Text);
+            };
         }
+
+        private bool IsDark => Properties.Settings.Default.ThemePreference == "Dark";
+
+        private LogTab CurrentLogTab => (LogTabControl.SelectedItem as TabItem)?.Tag as LogTab;
+
+        private IEnumerable<LogTab> AllLogTabs =>
+            LogTabControl.Items.OfType<TabItem>().Select(t => t.Tag).OfType<LogTab>();
 
         #region PrivateFunctions
         private void SelectLogFileForNewTab()
@@ -52,190 +50,85 @@ namespace LiveLogs
             OpenFileDialog openFileDialog = new OpenFileDialog
             {
                 Title = "Select Log File",
-                Filter = "Log Files (*.log;*.txt)|*.log;*.txt|All Files (*.*)|*.*"
+                Filter = "Log Files (*.log;*.txt)|*.log;*.txt|All Files (*.*)|*.*",
+                Multiselect = true
             };
 
             if (openFileDialog.ShowDialog() == true)
             {
-                CreateNewLogTab(openFileDialog.FileName);
-                ct.Visibility = Visibility.Collapsed;
+                foreach (var file in openFileDialog.FileNames)
+                    OpenOrFocus(file);
                 SaveOpenedFilesPaths();
             }
         }
 
-        private void CreateNewLogTab(string filePath)
+        private void OpenOrFocus(string filePath)
         {
-            // Create a new TabItem
-            TabItem newTab = new TabItem();
-            newTab.Header = System.IO.Path.GetFileName(filePath);
-
-            // Create a TextBox for log display (using your style)
-            /* TextBox logTextBox = new TextBox();
-             logTextBox.Style = (Style)FindResource("StyledMainTextBox");
-             logTextBox.IsReadOnly = true;
-             logTextBox.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-             logTextBox.TextWrapping = TextWrapping.Wrap;*/
-
-            ListBox logTextBox = new ListBox
+            var existing = AllLogTabs.FirstOrDefault(t =>
+                string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
             {
-                Style = (Style)FindResource("StyledMainTextBox"),
-            };
-
-            newTab.Content = logTextBox;
-            newTab.Style = (Style)FindResource("ModernTabItemStyle");
-            // Add the tab to the TabControl and select it
-            LogTabControl.Items.Add(newTab);
-            LogTabControl.SelectedItem = newTab;
-
-            // Create a LogTab instance to hold state for this file
-            LogTab newLogTab = new LogTab
-            {
-                FilePath = filePath,
-                LastPosition = 0,
-                LogTextBox = logTextBox
-            };
-
-            logTextBox.ItemsSource = newLogTab.LogLines;
-
-
-            newTab.Tag = newLogTab;
-
-
-            FileSystemWatcher watcher = new FileSystemWatcher
-            {
-                Path = System.IO.Path.GetDirectoryName(filePath),
-                Filter = System.IO.Path.GetFileName(filePath),
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
-            };
-
-            watcher.Changed += (s, e) => Dispatcher.InvokeAsync(() => ReadNewLines(newLogTab));
-            watcher.Created += (s, e) => Dispatcher.InvokeAsync(() => OnLogCreated(newLogTab));
-            watcher.Deleted += (s, e) => Dispatcher.InvokeAsync(() => OnLogDeleted(newLogTab));
-            watcher.Renamed += (s, e) => Dispatcher.InvokeAsync(() => OnLogRenamed(newLogTab, e));
-
-            watcher.EnableRaisingEvents = true;
-            newLogTab.Watcher = watcher;
-
-            Thread thread = new Thread(() => ReadNewLines(newLogTab))
-            {
-                IsBackground = true
-            };
-            thread.Start();
-
-        }
-
-        private void OnLogDeleted(LogTab tab)
-        {
-            // file is deleted: clear UI and reset state
-            tab.LogLines.Clear();
-            tab.LastPosition = 0;
-        }
-
-        private void OnLogCreated(LogTab tab)
-        {
-            // file re-created: reset and read from start
-            tab.LastPosition = 0;
-            ReadNewLines(tab);
-        }
-
-        private void OnLogRenamed(LogTab tab, RenamedEventArgs e)
-        {
-            // if the file was renamed back to the same name, update path.
-            // e.FullPath is the new name. If you need to follow rename, set FilePath
-            // Here: update if the watched filename changed to something else
-            // If file was rotated and new file has same name, Created will handle it;
-            // if rotated by renaming original->backup and a new file created, Created + Deleted sequence comes.
-            if (File.Exists(tab.FilePath) == false)
-            {
-                // if the file was renamed away, clear
-                tab.LogLines.Clear();
-                tab.LastPosition = 0;
-            }
-            else
-            {
-                // if new file exists at same path, read it
-                tab.LastPosition = 0;
-                ReadNewLines(tab);
-            }
-        }
-
-        private void  ReadNewLines(LogTab logTab)
-        {
-            try
-            {
-                if (!File.Exists(logTab.FilePath))
-                {
-                    return;
-                }
-                using (var stream = new FileStream(logTab.FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var reader = new StreamReader(stream, Encoding.UTF8))
-                {
-                    if (stream.Length < logTab.LastPosition)
-                        logTab.LastPosition = 0;
-
-                    stream.Seek(logTab.LastPosition, SeekOrigin.Begin);
-                    string newContent =  reader.ReadToEnd();
-                    logTab.LastPosition = stream.Position;
-
-                    if (!string.IsNullOrEmpty(newContent))
-                    {
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            logTab.AppendLog(newContent);
-                        });
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error reading log file: " + ex.Message);
-            }
-        }
-
-
-        private void ApplyFilterToLogTab(LogTab logTab)
-        {
-            string searchQuery = SearchTextBox.Text.ToLower();
-            _matchIndices.Clear();
-            if (string.IsNullOrEmpty(searchQuery))
-            {
-                logTab.LogTextBox.ItemsSource = logTab.LogLines;
-                logTab.LogTextBox.SelectedIndex = -1;
+                LogTabControl.SelectedItem = existing.Tab;
                 return;
             }
-
-            for (int i = 0; i < logTab.LogLines.Count; i++)
-            {
-                if (logTab.LogLines[i].ToLower().Contains(searchQuery))
-                {
-                    _matchIndices.Add(i);
-                }
-            }
-
-            if (_matchIndices.Count>0)
-            {
-                _currentMatchPosition = 0;
-                NavigateToMatch(logTab, _matchIndices[0]);
-            }
-            else
-            {
-                logTab.LogTextBox.SelectedIndex = -1;
-            }
+            CreateNewLogTab(filePath);
         }
 
-        private void NavigateToMatch(LogTab logTab, int matchIndex)
+        private void CreateNewLogTab(string filePath)
         {
-            
-            logTab.LogTextBox.SelectedIndex = matchIndex;
-            logTab.LogTextBox.Dispatcher.InvokeAsync(() =>
+            var logTab = new LogTab(filePath, IsDark);
+            logTab.CommandReceived += OnViewCommand;
+
+            TabItem newTab = new TabItem
             {
-                logTab.LogTextBox.ScrollIntoView(logTab.LogTextBox.Items[matchIndex]);
-            }, DispatcherPriority.Background);
+                Header = Path.GetFileName(filePath),
+                ToolTip = filePath,
+                Tag = logTab,
+                Style = (Style)FindResource("ModernTabItemStyle")
+            };
+            logTab.Tab = newTab;
+
+            ViewHost.Children.Add(logTab.Host);
+            LogTabControl.Items.Add(newTab);
+            LogTabControl.SelectedItem = newTab;
+            UpdateEmptyState();
         }
 
-        private void FilterLogs()
+        private void CloseTab(TabItem tabItem)
         {
-           
+            if (tabItem.Tag is LogTab logTab)
+            {
+                logTab.CommandReceived -= OnViewCommand;
+                ViewHost.Children.Remove(logTab.Host);
+                logTab.Dispose();
+            }
+            LogTabControl.Items.Remove(tabItem);
+            SaveOpenedFilesPaths();
+            UpdateEmptyState();
+        }
+
+        private void UpdateEmptyState()
+        {
+            bool empty = LogTabControl.Items.Count == 0;
+            ct.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+            OpenExternalBtn.IsEnabled = OpenFolderBtn.IsEnabled = ClearLogsBtn.IsEnabled = !empty;
+        }
+
+        private async void OnViewCommand(LogTab tab, string cmd)
+        {
+            switch (cmd)
+            {
+                case "find":
+                    SearchTextBox.Focus();
+                    SearchTextBox.SelectAll();
+                    break;
+                case "next":
+                    if (!string.IsNullOrEmpty(SearchTextBox.Text)) MatchCountText.Text = await tab.NextAsync();
+                    break;
+                case "prev":
+                    if (!string.IsNullOrEmpty(SearchTextBox.Text)) MatchCountText.Text = await tab.PrevAsync();
+                    break;
+            }
         }
 
         private void LoadOpenedFilesPaths()
@@ -244,7 +137,7 @@ namespace LiveLogs
             if (!string.IsNullOrWhiteSpace(storedFiles))
             {
                 string[] files = storedFiles.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var file in files)
+                foreach (var file in files.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
                     if (File.Exists(file))
                         CreateNewLogTab(file);
@@ -254,15 +147,7 @@ namespace LiveLogs
 
         private void SaveOpenedFilesPaths()
         {
-            List<string> filePaths = new List<string>();
-            foreach (TabItem tab in LogTabControl.Items)
-            {
-                if (tab.Tag is LogTab logTab)
-                {
-                    filePaths.Add(logTab.FilePath);
-                }
-            }
-            Properties.Settings.Default.LastOpenedFile = string.Join(";", filePaths);
+            Properties.Settings.Default.LastOpenedFile = string.Join(";", AllLogTabs.Select(t => t.FilePath));
             Properties.Settings.Default.Save();
         }
         #endregion
@@ -272,9 +157,38 @@ namespace LiveLogs
         {
             ApplySavedTheme();
             LoadOpenedFilesPaths();
-            if (LogTabControl.Items.Count == 0)
+            UpdateEmptyState();
+        }
+
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            foreach (var tab in AllLogTabs.ToList())
+                tab.Dispose();
+        }
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
             {
-                ct.Visibility = Visibility.Visible;
+                SearchTextBox.Focus();
+                SearchTextBox.SelectAll();
+                e.Handled = true;
+            }
+            else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.O)
+            {
+                SelectLogFileForNewTab();
+                e.Handled = true;
+            }
+            else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.W && LogTabControl.SelectedItem is TabItem t)
+            {
+                CloseTab(t);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F3)
+            {
+                if (Keyboard.Modifiers == ModifierKeys.Shift) Button_Click_Up(null, null);
+                else Button_Click_Down(null, null);
+                e.Handled = true;
             }
         }
 
@@ -283,47 +197,88 @@ namespace LiveLogs
             SelectLogFileForNewTab();
         }
 
+        private void OpenExternal_Click(object sender, RoutedEventArgs e)
+        {
+            var tab = CurrentLogTab;
+            if (tab == null) return;
+            try
+            {
+                Process.Start(new ProcessStartInfo(tab.FilePath) { UseShellExecute = true });
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // no association for this extension: fall back to Notepad
+                try { Process.Start("notepad.exe", "\"" + tab.FilePath + "\""); }
+                catch (Exception ex) { MessageBox.Show("Unable to open file: " + ex.Message); }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Unable to open file: " + ex.Message);
+            }
+        }
+
+        private void OpenFolder_Click(object sender, RoutedEventArgs e)
+        {
+            var tab = CurrentLogTab;
+            if (tab == null) return;
+            try
+            {
+                Process.Start("explorer.exe", "/select,\"" + tab.FilePath + "\"");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Unable to open folder: " + ex.Message);
+            }
+        }
+
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if(String.IsNullOrEmpty(SearchTextBox.Text))
-                UpBtn.Visibility = DownBtn.Visibility = Visibility.Collapsed;
-            else
-                UpBtn.Visibility = DownBtn.Visibility = Visibility.Visible;
+            bool hasText = !string.IsNullOrEmpty(SearchTextBox.Text);
+            UpBtn.Visibility = DownBtn.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
+            if (!hasText) MatchCountText.Text = "";
 
-            if (LogTabControl.SelectedItem is TabItem selectedTab && selectedTab.Tag is LogTab logTab)
+            _searchDebounce.Stop();
+            _searchDebounce.Start();
+        }
+
+        private void SearchTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
             {
-                ApplyFilterToLogTab(logTab);
+                if (_searchDebounce.IsEnabled) return; // let pending search run first
+                if (Keyboard.Modifiers == ModifierKeys.Shift) Button_Click_Up(null, null);
+                else Button_Click_Down(null, null);
+                e.Handled = true;
             }
+            else if (e.Key == Key.Escape)
+            {
+                SearchTextBox.Text = "";
+                CurrentLogTab?.Focus();
+                e.Handled = true;
+            }
+        }
+
+        private async void LogTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.OriginalSource != LogTabControl) return;
+
+            var current = CurrentLogTab;
+            foreach (var tab in AllLogTabs)
+                tab.Host.Visibility = tab == current ? Visibility.Visible : Visibility.Collapsed;
+
+            if (current != null && !string.IsNullOrEmpty(SearchTextBox.Text))
+                MatchCountText.Text = await current.SearchAsync(SearchTextBox.Text);
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button closeButton && closeButton.Tag is TabItem tabItem)
-            {
-                // Dispose FileSystemWatcher if it exists
-                if (tabItem.Tag is LogTab logTab && logTab.Watcher != null)
-                {
-                    logTab.Watcher.EnableRaisingEvents = false;
-                    logTab.Watcher.Dispose();
-                }
-
-                LogTabControl.Items.Remove(tabItem);
-                SaveOpenedFilesPaths();
-                if (LogTabControl.Items.Count == 0)
-                {
-                    ct.Visibility = Visibility.Visible;
-                }
-            }
+                CloseTab(tabItem);
         }
-
 
         private void LogTabControl_DragOver(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent(DataFormats.FileDrop))
-                e.Effects = DragDropEffects.Copy;
-            else
-                e.Effects = DragDropEffects.None;
-
+            e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
             e.Handled = true;
         }
 
@@ -332,141 +287,45 @@ namespace LiveLogs
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
                 string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
-
-                if (files.Length > 0)
-                {
-                    string filePath = files[0]; // Get the first file
-                    CreateNewLogTab(filePath);
-                    ct.Visibility = Visibility.Collapsed;
-                    SaveOpenedFilesPaths();
-                }
+                foreach (var file in files.Where(File.Exists))
+                    OpenOrFocus(file);
+                SaveOpenedFilesPaths();
             }
         }
 
-        #endregion
-
-        #region Theme
-        private void ToggleTheme_Click(object sender, RoutedEventArgs e)
+        private async void Button_Click_Up(object sender, RoutedEventArgs e)
         {
-            var dictionaries = Application.Current.Resources.MergedDictionaries;
-            var darkDictionary = dictionaries.FirstOrDefault(d => d.Source != null &&
-                d.Source.OriginalString.EndsWith("DarkTheme.xaml", StringComparison.OrdinalIgnoreCase));
-            var lightDictionary = dictionaries.FirstOrDefault(d => d.Source != null &&
-                d.Source.OriginalString.EndsWith("LightTheme.xaml", StringComparison.OrdinalIgnoreCase));
-
-            if (darkDictionary != null)
-            {
-                dictionaries.Remove(darkDictionary);
-                dictionaries.Add(new ResourceDictionary()
-                {
-                    Source = new Uri("LightTheme.xaml", UriKind.Relative)
-                });
-                Properties.Settings.Default.ThemePreference = "Light";
-                SetThemeToTitleBar("Light");
-            }
-            else if (lightDictionary != null)
-            {
-                dictionaries.Remove(lightDictionary);
-                dictionaries.Add(new ResourceDictionary()
-                {
-                    Source = new Uri("DarkTheme.xaml", UriKind.Relative)
-                });
-                Properties.Settings.Default.ThemePreference = "Dark";
-                SetThemeToTitleBar("Dark");
-            }
-            Properties.Settings.Default.Save();
+            var tab = CurrentLogTab;
+            if (tab == null || string.IsNullOrEmpty(SearchTextBox.Text)) return;
+            MatchCountText.Text = await tab.PrevAsync();
         }
 
-        private void ApplySavedTheme()
+        private async void Button_Click_Down(object sender, RoutedEventArgs e)
         {
-            string savedTheme = Properties.Settings.Default.ThemePreference;
-            if (savedTheme == "Light")
-            {
-                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary()
-                {
-                    Source = new Uri("LightTheme.xaml", UriKind.Relative)
-                });
-                ThemeBtn.IsChecked = false;
-            }
-            else if (savedTheme == "Dark")
-            {
-                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary()
-                {
-                    Source = new Uri("DarkTheme.xaml", UriKind.Relative)
-                });
-                ThemeBtn.IsChecked = true;
-            }
-            SetThemeToTitleBar(savedTheme);
-        }
-
-        public void SetThemeToTitleBar(string enableDarkMode)
-        {
-            try 
-            {
-                var window = Application.Current.MainWindow;
-                IntPtr hwnd = new WindowInteropHelper(window).Handle;
-                if (hwnd != IntPtr.Zero)
-                {
-                    int isDarkMode = enableDarkMode == "Dark" ? 1 : 0;
-                    DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref isDarkMode, sizeof(int));
-                }
-            }
-            catch (Exception e)
-            {
-                MessageBox.Show("SetThemeToTitleBar : Theme -> { " + enableDarkMode + " }: E @ SwitchTheme : " + e.ToString());
-            }
-        }
-        #endregion
-
-        private void Button_Click_Up(object sender, RoutedEventArgs e)
-        {
-            if (_matchIndices.Count == 0 )
-                return;
-
-            var _currentLogTab = (LogTabControl.SelectedItem as TabItem).Tag as LogTab;
-            _currentMatchPosition = (_currentMatchPosition - 1 + _matchIndices.Count) % _matchIndices.Count;
-            NavigateToMatch(_currentLogTab, _matchIndices[_currentMatchPosition]);
-        }
-
-        private void Button_Click_Down(object sender, RoutedEventArgs e)
-        {
-            if (_matchIndices.Count == 0)
-                return;
-
-            var _currentLogTab = (LogTabControl.SelectedItem as TabItem).Tag as LogTab;
-            _currentMatchPosition = (_currentMatchPosition + 1 + _matchIndices.Count) % _matchIndices.Count;
-            NavigateToMatch(_currentLogTab, _matchIndices[_currentMatchPosition]);
+            var tab = CurrentLogTab;
+            if (tab == null || string.IsNullOrEmpty(SearchTextBox.Text)) return;
+            MatchCountText.Text = await tab.NextAsync();
         }
 
         private void ClearLogsBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (!(LogTabControl.SelectedItem is TabItem selectedTab) || !(selectedTab.Tag is LogTab logTab))
+            var logTab = CurrentLogTab;
+            if (logTab == null)
             {
                 MessageBox.Show("No log tab is selected.", "Clear Logs", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            // Confirm
             var result = MessageBox.Show($"This will clear the file:\n\n{logTab.FilePath}\n\nAre you sure?",
                                          "Clear Logs", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (result != MessageBoxResult.Yes) return;
 
             try
             {
-                // Try to truncate/overwrite the file safely
-                // This will create the file if it doesn't exist, or overwrite if it does.
-                File.WriteAllText(logTab.FilePath, string.Empty);
-
-                // Reset our tracking state so we don't continue from old position
-                logTab.LastPosition = 0;
-
-                // Clear UI content
-                logTab.LogLines.Clear();
-
-                // If watcher exists, let it continue watching (it will see file change)
-                // Optionally re-read new content (there will be none)
-                ReadNewLines(logTab);
-               
+                using (var fs = new FileStream(logTab.FilePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                {
+                }
+                logTab.Reset();
             }
             catch (UnauthorizedAccessException)
             {
@@ -483,5 +342,57 @@ namespace LiveLogs
                 MessageBox.Show("Unexpected error: " + ex.Message, "Clear Logs - Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+        #endregion
+
+        #region Theme
+        private void ToggleTheme_Click(object sender, RoutedEventArgs e)
+        {
+            string theme = IsDark ? "Light" : "Dark";
+            SetThemeDictionary(theme);
+            Properties.Settings.Default.ThemePreference = theme;
+            Properties.Settings.Default.Save();
+            ThemeBtn.IsChecked = theme == "Dark";
+            SetThemeToTitleBar(theme);
+            foreach (var tab in AllLogTabs)
+                tab.SetTheme(theme == "Dark");
+        }
+
+        private void ApplySavedTheme()
+        {
+            string savedTheme = Properties.Settings.Default.ThemePreference == "Dark" ? "Dark" : "Light";
+            SetThemeDictionary(savedTheme);
+            ThemeBtn.IsChecked = savedTheme == "Dark";
+            SetThemeToTitleBar(savedTheme);
+        }
+
+        private static void SetThemeDictionary(string theme)
+        {
+            var dictionaries = Application.Current.Resources.MergedDictionaries;
+            foreach (var d in dictionaries.Where(d => d.Source != null &&
+                     (d.Source.OriginalString.EndsWith("DarkTheme.xaml", StringComparison.OrdinalIgnoreCase) ||
+                      d.Source.OriginalString.EndsWith("LightTheme.xaml", StringComparison.OrdinalIgnoreCase))).ToList())
+            {
+                dictionaries.Remove(d);
+            }
+            dictionaries.Add(new ResourceDictionary { Source = new Uri(theme + "Theme.xaml", UriKind.Relative) });
+        }
+
+        public void SetThemeToTitleBar(string enableDarkMode)
+        {
+            try
+            {
+                IntPtr hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                {
+                    int isDarkMode = enableDarkMode == "Dark" ? 1 : 0;
+                    DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref isDarkMode, sizeof(int));
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.WriteLine("SetThemeToTitleBar failed: " + e);
+            }
+        }
+        #endregion
     }
 }

@@ -111,6 +111,10 @@
     <Content Include="Images\StoreLogo.png" />
     <Content Include="Images\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
+  <PropertyGroup>
+    <!-- LiveLogs uses WebView2 via .NET (not WinRT); prevents VCLibs SDK reference (MSB3779) -->
+    <WebView2UseWinRT>false</WebView2UseWinRT>
+  </PropertyGroup>
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.targets" />
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" PrivateAssets="all" />

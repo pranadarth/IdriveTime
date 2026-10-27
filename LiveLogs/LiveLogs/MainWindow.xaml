@@ -6,77 +6,80 @@
     xmlns:local="clr-namespace:LiveLogs"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Loaded="Window_Loaded"
+    Closing="Window_Closing"
+    PreviewKeyDown="Window_PreviewKeyDown"
     AllowDrop="True"
     DragOver="LogTabControl_DragOver"
     Drop="LogTabControl_Drop"
     Title="Log Viewer"
-    Width="1050" Height="600"
-    MinHeight="550"
+    Width="1100" Height="650"
+    MinHeight="450"
     MinWidth="750"
+    UseLayoutRounding="True"
+    FontFamily="Segoe UI, Segoe UI Symbol, Segoe UI Emoji"
     mc:Ignorable="d">
     <Window.Resources>
-  
-        <Style x:Key="StyledCloseButton" TargetType="Button">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderThickness="0" VerticalAlignment="Center">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
 
         <Style x:Key="ModernTabItemStyle" TargetType="{x:Type TabItem}">
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Margin" Value="0" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
-                        <Grid>
-                            <Border x:Name="Border" 
-                            Background="{DynamicResource PrimaryBackground}" 
-                            BorderBrush="{DynamicResource BorderBrushColor}" 
-                            BorderThickness="1,1,1,0" 
-                            CornerRadius="6,6,0,0" 
-                            Padding="10,5">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition />
-                                        <ColumnDefinition  Width="25"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock  x:Name="ContentPresenter"
-                                                Foreground="{DynamicResource PrimaryForeground}"
-                                              Text="{TemplateBinding Header}"
-                                              VerticalAlignment="Center"
-                                              HorizontalAlignment="Left" />
-
-                                    <Button x:Name="CloseButton" Content="✕" 
-                                            Grid.Column="1"
-                                            Width="16" Height="16" 
-                                            Background="Transparent" 
-                                            BorderThickness="0"
-                                            Foreground="{DynamicResource PrimaryForeground}" 
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Center"
-                                            Margin="5,0,0,0"
-                                            Click="Button_Click"
-                                            Tag="{Binding RelativeSource={RelativeSource AncestorType=TabItem}}"/>  
-                                </Grid>
-                            </Border>
-                        </Grid>
+                        <Border x:Name="Border"
+                                Background="Transparent"
+                                CornerRadius="6,6,0,0"
+                                MaxWidth="280">
+                            <Grid>
+                            <Border x:Name="Indicator" Height="2" VerticalAlignment="Top" CornerRadius="6,6,0,0"
+                                    Background="{DynamicResource AccentBrush}" Visibility="Hidden" />
+                            <Grid Margin="12,7,6,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="HeaderText"
+                                           Foreground="{DynamicResource PlaceholderForeground}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{TemplateBinding Header}"
+                                           ToolTip="{TemplateBinding ToolTip}"
+                                           VerticalAlignment="Center" />
+                                <Button Content="&#x2715;" Grid.Column="1"
+                                        x:Name="CloseBtn" FontSize="10"
+                                        Width="20" Height="20" Margin="8,0,0,0"
+                                        Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                        Foreground="{DynamicResource PlaceholderForeground}"
+                                        Click="Button_Click"
+                                        ToolTip="Close tab"
+                                        Tag="{Binding RelativeSource={RelativeSource AncestorType=TabItem}}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" Background="Transparent" CornerRadius="4">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBackground}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </Grid>
+                            </Grid>
+                        </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource TabHoverBackground}" />
+                                <Setter TargetName="HeaderText" Property="Foreground" Value="{DynamicResource PrimaryForeground}" />
+                            </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource SecondaryBackground}" />
-                                <Setter TargetName="ContentPresenter" Property="FontWeight" Value="Bold" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="False">
-                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource PrimaryBackground}" />
-                                <Setter TargetName="ContentPresenter" Property="FontWeight" Value="Normal" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="ContentPresenter" Property="Foreground" Value="Gray" />
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource LogBackground}" />
+                                <Setter TargetName="Indicator" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="HeaderText" Property="Foreground" Value="{DynamicResource PrimaryForeground}" />
+                                <Setter TargetName="HeaderText" Property="FontWeight" Value="SemiBold" />
+                                <Setter TargetName="CloseBtn" Property="Foreground" Value="{DynamicResource PrimaryForeground}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -85,69 +88,36 @@
         </Style>
 
         <Style x:Key="ModernTabControlStyle" TargetType="{x:Type TabControl}">
-            <Setter Property="Background" Value="{DynamicResource SecondaryBackground}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushColor}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="4" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type TabControl}">
-                        <Grid ClipToBounds="true">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <!-- Left-aligned TabPanel -->
-                            <TabPanel x:Name="HeaderPanel" 
-                              Grid.Row="0" 
-                              IsItemsHost="true" 
-                              Background="{DynamicResource SecondaryBackground}" 
-                              HorizontalAlignment="Left" 
-                              Margin="2"/>
-                            <Border x:Name="ContentPanel" 
-                            Grid.Row="1" 
-                            BorderThickness="1" 
-                            BorderBrush="{DynamicResource BorderBrushColor}" 
-                            CornerRadius="6" 
-                            Background="{DynamicResource PrimaryBackground}"
-                            Padding="4">
-                                <ContentPresenter x:Name="PART_SelectedContentHost" 
-                                          ContentSource="SelectedContent" />
-                            </Border>
-                        </Grid>
+                        <TabPanel IsItemsHost="True" HorizontalAlignment="Left" Margin="0" />
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="CustomToggleButtonStyle" TargetType="ToggleButton">
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Grid>
-                            <Border x:Name="ToggleBorder" Height="25" Width="42" 
-                              Background="{DynamicResource SecondaryBackground}"
-                              BorderBrush="{DynamicResource BorderBrushColor}"
-                              BorderThickness="1.5" 
-                              CornerRadius="13" >
-                                <Border x:Name="CircleIndicator"  CornerRadius="10"
-                                   Height="20" Width="17" VerticalAlignment="Center"
-                                   HorizontalAlignment="Left" 
-                                   Margin="3">
-                                    <TextBlock x:Name="CircleIndicatorText" Text="🔆" 
-                                               Foreground="Orange"
-                                               HorizontalAlignment="Center" 
-                                               VerticalAlignment="Center"/>
-                                </Border>
+                        <Border Height="25" Width="42"
+                                Background="{DynamicResource SecondaryBackground}"
+                                BorderBrush="{DynamicResource BorderBrushColor}"
+                                BorderThickness="1.5" CornerRadius="13">
+                            <Border x:Name="CircleIndicator" CornerRadius="10" Height="20" Width="17"
+                                    VerticalAlignment="Center" HorizontalAlignment="Left" Margin="3">
+                                <TextBlock x:Name="CircleIndicatorText" Text="&#x1F506;" Foreground="Orange"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
-                        </Grid>
+                        </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="CircleIndicator" Property="HorizontalAlignment" Value="Right"/>
-                                <Setter TargetName="CircleIndicatorText" Property="Text" Value="🌙"/>
-                                <Setter TargetName="CircleIndicatorText" Property="Foreground" Value="White"/>
+                                <Setter TargetName="CircleIndicator" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="CircleIndicatorText" Property="Text" Value="&#x1F319;" />
+                                <Setter TargetName="CircleIndicatorText" Property="Foreground" Value="White" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -155,118 +125,51 @@
             </Setter>
         </Style>
 
-        <!-- Custom Scrollbar Style -->
-        <Style TargetType="ScrollBar">
-            <Setter Property="Width" Value="10"/>
-            <Setter Property="Background" Value="{DynamicResource ScrollTrackColor}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ScrollBar">
-                        <Grid>
-                            <Border Background="{DynamicResource ScrollTrackColor}" Width="10" BorderThickness="0"/>
-                            <Track Name="PART_Track" IsDirectionReversed="True" >
-                                <Track.Thumb>
-                                    <Thumb Background="{DynamicResource ScrollThumbColor}" 
-                                       Width="10" />
-                                </Track.Thumb>
-                            </Track>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-
-        <!--  TextBox Style  -->
         <Style x:Key="StyledTextBox" TargetType="TextBox">
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="Padding" Value="5" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Background" Value="{DynamicResource PrimaryBackground}" />
             <Setter Property="Foreground" Value="{DynamicResource PrimaryForeground}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushColor}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource PrimaryForeground}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
                         <Grid>
-                            <Border
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{DynamicResource BorderBrushColor}"
-                                BorderThickness="1.5"
-                                CornerRadius="8">
-                            </Border>
-                            <ScrollViewer x:Name="PART_ContentHost" Margin="3 0 0 0"  VerticalContentAlignment="Center"/>
-                            <TextBlock
-                                x:Name="PlaceholderText"
-                                Margin="10,0,0,0"
-                                HorizontalAlignment="Left"
-                                VerticalAlignment="Center"
-                                Foreground="{DynamicResource PlaceholderForeground}"
-                                Text="{TemplateBinding Tag}"
-                                Visibility="Collapsed" />
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                    BorderBrush="{DynamicResource SubtleBorderBrush}"
+                                    BorderThickness="1" CornerRadius="6" />
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="6,0,0,0" VerticalAlignment="Center" />
+                            <TextBlock x:Name="PlaceholderText" Margin="10,0,0,0"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource PlaceholderForeground}"
+                                       Text="{TemplateBinding Tag}" IsHitTestVisible="False"
+                                       Visibility="Collapsed" />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="Text" Value="">
                                 <Setter TargetName="PlaceholderText" Property="Visibility" Value="Visible" />
                             </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
-        <Style x:Key="StyledMainTextBox" TargetType="ListBox">
-            <Setter Property="Background" Value="{DynamicResource SecondaryBackground}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushColor}" />
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="FontWeight" Value="Light" />
-            <Setter Property="IsTextSearchEnabled" Value="True" />
-            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
-            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
-            <Setter Property="ItemsPanel">
-                <Setter.Value>
-                    <ItemsPanelTemplate>
-                        <VirtualizingStackPanel Margin="0" />
-                    </ItemsPanelTemplate>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="ItemContainerStyle">
-                <Setter.Value>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="VerticalAlignment" Value="Center" />
-                        <Setter Property="Margin" Value="0" />
-                        <Style.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="FontWeight" Value="Bold" />
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="ItemTemplate">
-                <Setter.Value>
-                    <DataTemplate>
-                        <TextBox Text="{Binding .}" TextWrapping="Wrap"
-                          Foreground="{DynamicResource PrimaryForeground}"
-                          BorderThickness="0" 
-                          Background="Transparent" 
-                          IsReadOnly="True" />
-                    </DataTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!--  Button Style  -->
         <Style x:Key="StyledButton" TargetType="Button">
-            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Margin" Value="4,0" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Background" Value="{DynamicResource ButtonHoverBackground}" />
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                     </ControlTemplate>
@@ -276,7 +179,16 @@
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="{DynamicResource ButtonBackground}" />
                 </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.4" />
+                </Trigger>
             </Style.Triggers>
+        </Style>
+
+        <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource StyledButton}">
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="2,0" />
         </Style>
     </Window.Resources>
 
@@ -287,49 +199,67 @@
         </Grid.RowDefinitions>
 
         <!--  Top Bar  -->
-        <DockPanel Height="50" Background="{DynamicResource SecondaryBackground}">
-            <Button Width="100" Height="30" Margin="10" Click="ChangeFile_Click"
-                    Content="Open File" FontSize="13"
-                    Style="{StaticResource StyledButton}" />
-            <TextBox Name="SearchTextBox" Width="200" Height="30" Margin="10"
-                     HorizontalAlignment="Left" VerticalAlignment="Center"
-                     Style="{StaticResource StyledTextBox}" Tag="Search 🔍"
-                     TextChanged="SearchTextBox_TextChanged" />
-            <Button Content="⇧" x:Name="UpBtn" VerticalAlignment="Center" Background="Transparent" Foreground="{DynamicResource PrimaryForeground}"
-                    BorderThickness="0" FontSize="35" Margin="0 0 0 5" Click="Button_Click_Up" Visibility="Collapsed" Cursor="Hand"/>
-            <Button Content="⇩" x:Name="DownBtn" VerticalAlignment="Center" Background="Transparent" Foreground="{DynamicResource PrimaryForeground}"
-                    BorderThickness="0" FontSize="35" Margin="0 0 0 0" Click="Button_Click_Down" Visibility="Collapsed" Cursor="Hand"/>
+        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SubtleBorderBrush}"
+                Background="{DynamicResource SecondaryBackground}">
+        <Grid Height="50">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-            <Grid>
+            <StackPanel Orientation="Horizontal" Margin="6,0" VerticalAlignment="Center">
+                <Button Content="&#x1F4C2; Open" Click="ChangeFile_Click" Style="{StaticResource StyledButton}"
+                        ToolTip="Open log file(s) in new tab(s)  (Ctrl+O)" />
+                <Button x:Name="OpenExternalBtn" Content="&#x2197; Open in editor" Click="OpenExternal_Click"
+                        Style="{StaticResource StyledButton}"
+                        ToolTip="Open the current file with its default application" />
+                <Button x:Name="OpenFolderBtn" Content="&#x1F4C1;" Click="OpenFolder_Click"
+                        Style="{StaticResource IconButton}"
+                        ToolTip="Show the current file in Explorer" />
+            </StackPanel>
 
-                <Button x:Name="ClearLogsBtn"
-                    Width="40"
-                    Height="25"
-                    Margin="0 0 100 0" 
-                    HorizontalAlignment="right"
-                    Content="✘"
-                    ToolTip="Clear logs for current tab (file will be truncated)"
-                    Click="ClearLogsBtn_Click"
-                    Style="{StaticResource StyledButton}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0" VerticalAlignment="Center">
+                <TextBox Name="SearchTextBox" Width="260" Height="30"
+                         Style="{StaticResource StyledTextBox}" Tag="Search &#x1F50D;  (Ctrl+F)"
+                         TextChanged="SearchTextBox_TextChanged"
+                         PreviewKeyDown="SearchTextBox_PreviewKeyDown" />
+                <TextBlock x:Name="MatchCountText" Margin="8,0" MinWidth="50" VerticalAlignment="Center"
+                           Foreground="{DynamicResource PlaceholderForeground}" />
+                <Button x:Name="UpBtn" Content="&#x25B2;" Click="Button_Click_Up" Visibility="Collapsed"
+                        Style="{StaticResource IconButton}" ToolTip="Previous match (Shift+Enter)" />
+                <Button x:Name="DownBtn" Content="&#x25BC;" Click="Button_Click_Down" Visibility="Collapsed"
+                        Style="{StaticResource IconButton}" ToolTip="Next match (Enter / F3)" />
+            </StackPanel>
 
-                <!-- Toggle Theme Button -->
-                <ToggleButton Width="100" Height="30" Margin="10" x:Name="ThemeBtn"
-                    Content="Toggle Theme" FontSize="13" HorizontalAlignment="right"
-                    Click="ToggleTheme_Click" Style="{StaticResource CustomToggleButtonStyle}" />
-            </Grid>
-        </DockPanel>
-        <TabControl x:Name="LogTabControl" Grid.Row="2" Margin="5" 
-                    Style="{StaticResource ModernTabControlStyle}"
-                    VirtualizingStackPanel.IsVirtualizing="True"
-                    VirtualizingStackPanel.VirtualizationMode="Recycling"
-                    VirtualizingPanel.CacheLengthUnit="Item"
-                    VirtualizingPanel.ScrollUnit="Item"
-                    VirtualizingPanel.CacheLength="10"
-                    RenderOptions.CachingHint="Cache"
-                    ScrollViewer.CanContentScroll="True"
-                    SnapsToDevicePixels="True"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="6,0" VerticalAlignment="Center">
+                <Button x:Name="ClearLogsBtn" Content="&#x2718; Clear" Click="ClearLogsBtn_Click"
+                        Style="{StaticResource StyledButton}"
+                        ToolTip="Clear logs for current tab (file will be truncated)" />
+                <ToggleButton x:Name="ThemeBtn" Margin="8,0,4,0" Click="ToggleTheme_Click"
+                              ToolTip="Toggle theme"
+                              Style="{StaticResource CustomToggleButtonStyle}" />
+            </StackPanel>
+        </Grid>
+        </Border>
 
-        <TextBlock x:Name="ct" Text="Open a file or Drag and Drop to view active logs" Grid.Row="2"  FontSize="14"
+        <Grid Grid.Row="1" Margin="8,6,8,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TabControl x:Name="LogTabControl"
+                        Style="{StaticResource ModernTabControlStyle}"
+                        SelectionChanged="LogTabControl_SelectionChanged" />
+            <Border Grid.Row="1" BorderThickness="1" CornerRadius="0,6,6,6" Padding="0"
+                    BorderBrush="{DynamicResource SubtleBorderBrush}"
+                    Background="{DynamicResource LogBackground}">
+                <!-- WebViews stay alive here; only visibility toggles on tab switch -->
+                <Grid x:Name="ViewHost" />
+            </Border>
+        </Grid>
+
+        <TextBlock x:Name="ct" Text="Open a file or Drag and Drop to view active logs" Grid.Row="1" FontSize="14"
                    Foreground="{DynamicResource PlaceholderForeground}" Visibility="Collapsed"
                    VerticalAlignment="Center" HorizontalAlignment="Center" />
     </Grid>

@@ -22,6 +22,43 @@
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/investments">Update Assets</MudButton>
     </div>
 
+    @if (!IsSyncingData)
+    {
+        var spent = MonthTxns.Where(t => t.IsExpense && t.Category != "Transfers").Sum(t => t.Amount);
+        var earned = MonthTxns.Where(t => !t.IsExpense).Sum(t => t.Amount);
+        var budgetTotal = MyBudgets.Sum(b => b.MonthlyLimit);
+        <div class="panel mb-6" style="height:auto">
+            <div class="d-flex flex-wrap justify-space-between align-center gap-4">
+                <div>
+                    <div class="stat-label">Spent in @DateTime.Today.ToString("MMMM")</div>
+                    <div class="stat-value text-error">₹@spent.ToString("N0")</div>
+                    <div class="stat-sub">
+                        Income ₹@earned.ToString("N0")
+                        @if (budgetTotal > 0) { <span> · Budget ₹@budgetTotal.ToString("N0") (@((double)(spent / budgetTotal * 100)).ToString("F0")% used)</span> }
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var g in MonthTxns.Where(t => t.IsExpense && t.Category != "Transfers").GroupBy(t => t.Category).OrderByDescending(g => g.Sum(t => t.Amount)).Take(4))
+                    {
+                        var info = Categories.Get(g.Key);
+                        <div class="d-flex align-center gap-2 px-3 py-2" style="border:1px solid var(--mud-palette-lines-default);border-radius:12px">
+                            <MudIcon Icon="@info.Icon" Size="Size.Small" Style="@($"color:{info.Color}")" />
+                            <div><div class="small text-muted">@g.Key</div><b>₹@g.Sum(t => t.Amount).ToString("N0")</b></div>
+                        </div>
+                    }
+                </div>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/transactions" StartIcon="@Icons.Material.Rounded.ReceiptLong" Class="rounded-pill">
+                    @(MonthTxns.Any() ? "View transactions" : "Start tracking expenses")
+                </MudButton>
+            </div>
+            @if (budgetTotal > 0)
+            {
+                var pct = (double)(spent / budgetTotal * 100);
+                <MudProgressLinear Value="@Math.Min(pct, 100)" Color="@(pct >= 100 ? Color.Error : pct >= 80 ? Color.Warning : Color.Success)" Rounded="true" Class="mt-4" />
+            }
+        </div>
+    }
+
     @if (IsSyncingData)
     {
         <div class="d-flex flex-column justify-center align-center" style="min-height: 60vh;">
@@ -34,8 +71,8 @@
     {
         <MudPaper Class="pa-8 text-center" Elevation="0" Outlined="true" Style="border-radius: 15px;">
             <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Size="Size.Large" Color="Color.Primary" Class="mb-3" />
-            <MudText Typo="Typo.h5" Class="fw-bold">Welcome to your Wealth OS!</MudText>
-            <MudText Typo="Typo.body1" Class="text-muted mt-2">Go to the <b>Investments</b> and <b>Expenses</b> tabs to load your data into the cloud.</MudText>
+            <MudText Typo="Typo.h5" Class="fw-bold">Add your investments to unlock wealth insights</MudText>
+            <MudText Typo="Typo.body1" Class="text-muted mt-2">Track your spending above, and add your stocks, funds, FDs and EPF in <b>Investments</b> to see your net worth and FIRE projections.</MudText>
         </MudPaper>
     }
     else
@@ -214,6 +251,62 @@
             </MudItem>
         </MudGrid>
 
+        <!-- MONEY SNAPSHOT: Accounts + Subscriptions -->
+        <MudGrid Spacing="4" Class="mb-6">
+            <MudItem xs="12" md="6">
+                <div class="panel">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <div class="panel-title m-0">Accounts</div>
+                        <MudButton Href="/accounts" Size="Size.Small" EndIcon="@Icons.Material.Rounded.ChevronRight">Manage</MudButton>
+                    </div>
+                    @if (!MyAccounts.Any())
+                    {
+                        <MudText Typo="Typo.body2" Class="text-muted">Link your banks & cards to see liquid cash and card dues here.</MudText>
+                    }
+                    else
+                    {
+                        <div class="d-flex gap-6 mb-3">
+                            <div><div class="stat-label">Liquid Cash</div><div class="fw-bold text-success" style="font-size:1.3rem">₹@MyAccounts.Where(a => !a.IsCredit).Sum(a => a.Balance).ToString("N0")</div></div>
+                            <div><div class="stat-label">Card Dues</div><div class="fw-bold text-error" style="font-size:1.3rem">₹@MyAccounts.Where(a => a.IsCredit).Sum(a => a.Balance).ToString("N0")</div></div>
+                        </div>
+                        @foreach (var a in MyAccounts.OrderByDescending(a => a.Balance).Take(4))
+                        {
+                            <div class="list-row">
+                                <MudIcon Icon="@(a.IsCredit ? Icons.Material.Rounded.CreditCard : Icons.Material.Rounded.AccountBalance)" Color="@(a.IsCredit ? Color.Error : Color.Primary)" />
+                                <div class="flex-grow-1 text-truncate">@a.DisplayName</div>
+                                <b>₹@a.Balance.ToString("N0")</b>
+                            </div>
+                        }
+                    }
+                </div>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <div class="panel">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <div class="panel-title m-0">Upcoming Renewals</div>
+                        <MudButton Href="/subscriptions" Size="Size.Small" EndIcon="@Icons.Material.Rounded.ChevronRight">All</MudButton>
+                    </div>
+                    @{ var activeSubs = MySubs.Where(s => s.IsActive).ToList(); }
+                    @if (!activeSubs.Any())
+                    {
+                        <MudText Typo="Typo.body2" Class="text-muted">Track Netflix, Spotify, gym etc. to get renewal reminders.</MudText>
+                    }
+                    else
+                    {
+                        <div class="mb-3"><div class="stat-label">Subscriptions / month</div><div class="fw-bold text-primary" style="font-size:1.3rem">₹@activeSubs.Sum(s => s.MonthlyCost).ToString("N0")</div></div>
+                        @foreach (var s in activeSubs.OrderBy(s => s.DaysUntilRenewal).Take(4))
+                        {
+                            <div class="list-row">
+                                <MudIcon Icon="@Icons.Material.Rounded.Autorenew" Color="@(s.DaysUntilRenewal <= 7 ? Color.Error : Color.Default)" />
+                                <div class="flex-grow-1 text-truncate">@s.Name <span class="text-muted small">· @(s.DaysUntilRenewal == 0 ? "today" : $"in {s.DaysUntilRenewal}d")</span></div>
+                                <b>₹@s.Amount.ToString("N0")</b>
+                            </div>
+                        }
+                    }
+                </div>
+            </MudItem>
+        </MudGrid>
+
         <!-- RECENT WEALTH TREND (Compact) -->
         @if (showTrend)
         {
@@ -292,6 +385,10 @@
     private List<FixedDeposit> MyFDs = new();
     private List<PhysicalAsset> MyPhysicalAssets = new();
     private List<ExpenseItem> MyExpenses = new();
+    private List<BankAccount> MyAccounts = new();
+    private List<Subscription> MySubs = new();
+    private List<Transaction> MonthTxns = new();
+    private List<Budget> MyBudgets = new();
     private UserSettings Settings = new();
     private List<ChartSeries<double>> historyChartData = new();
 
@@ -362,6 +459,18 @@
 
             var epfCloud = allAssets.FirstOrDefault(a => a.AssetType == "EPF");
             MyEPF = epfCloud != null ? new EPFData { Id = epfCloud.Id, CurrentValue = epfCloud.CurrentValue, MonthlyContribution = epfCloud.MonthlyContribution, InterestRate = epfCloud.InterestRate } : new EPFData();
+
+            // Optional tables - fail silently if not yet created
+            try { MyAccounts = (await SupabaseClient.From<BankAccount>().Where(x => x.UserId == currentUserId).Get()).Models; } catch { }
+            try { MySubs = (await SupabaseClient.From<Subscription>().Where(x => x.UserId == currentUserId).Get()).Models; } catch { }
+            try
+            {
+                var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).ToString("yyyy-MM-dd");
+                MonthTxns = (await SupabaseClient.From<Transaction>().Where(x => x.UserId == currentUserId)
+                    .Filter("txn_date", Postgrest.Constants.Operator.GreaterThanOrEqual, monthStart).Get()).Models;
+                MyBudgets = (await SupabaseClient.From<Budget>().Where(x => x.UserId == currentUserId).Get()).Models;
+            }
+            catch { }
         }
 
         // True XIRR via local age setting

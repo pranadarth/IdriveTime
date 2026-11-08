@@ -1,0 +1,219 @@
+@page "/accounts"
+@inject Supabase.Client SupabaseClient
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@using PranaWealthOS.Models
+@using System.Security.Claims
+
+<PageTitle>ArthaOne - Accounts</PageTitle>
+
+<div class="page-wrap">
+    <div class="page-header">
+        <div>
+            <h2 class="page-title"><MudIcon Icon="@Icons.Material.Rounded.AccountBalance" /> Accounts</h2>
+            <MudText Typo="Typo.body2" Class="text-muted">All your banks, credit cards and wallets in one place.</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNew" Class="rounded-pill px-5">Add Account</MudButton>
+    </div>
+
+    <MudGrid Spacing="4" Class="mb-6">
+        <MudItem xs="12" sm="4">
+            <div class="stat-card">
+                <span class="stat-label">Cash in Banks</span>
+                <span class="stat-value text-success">?@CashTotal.ToString("N0")</span>
+                <span class="stat-sub">@AccountList.Count(a => !a.IsCredit) accounts</span>
+            </div>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <div class="stat-card">
+                <span class="stat-label">Credit Card Dues</span>
+                <span class="stat-value text-error">?@CardDue.ToString("N0")</span>
+                <span class="stat-sub">@AccountList.Count(a => a.IsCredit) cards</span>
+            </div>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <div class="stat-card">
+                <span class="stat-label">Credit Utilization</span>
+                <span class="stat-value" style="color:@(Utilization > 30 ? "var(--mud-palette-error)" : "var(--mud-palette-success)")">@Utilization.ToString("F0")%</span>
+                <MudProgressLinear Value="@Math.Min(Utilization, 100)" Color="@(Utilization > 30 ? Color.Error : Color.Success)" Rounded="true" Size="Size.Small" Class="mt-2" />
+                <span class="stat-sub">Keep below 30% for a healthy credit score</span>
+            </div>
+        </MudItem>
+    </MudGrid>
+
+    @if (IsFetching)
+    {
+        <div class="d-flex justify-center my-8"><MudProgressCircular Color="Color.Primary" Indeterminate="true" /></div>
+    }
+    else if (!AccountList.Any())
+    {
+        <div class="empty-state">
+            <MudIcon Icon="@Icons.Material.Rounded.AccountBalanceWallet" Size="Size.Large" Color="Color.Primary" />
+            <MudText Typo="Typo.h6" Class="fw-bold mt-2">No AccountList yet</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted mb-4">Add your savings accounts, credit cards and UPI wallets to see your full picture.</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenNew" Class="rounded-pill">Add your first account</MudButton>
+        </div>
+    }
+    else
+    {
+        <MudGrid Spacing="4">
+            @foreach (var acc in AccountList.OrderBy(a => a.IsCredit).ThenByDescending(a => a.Balance))
+            {
+                <MudItem xs="12" sm="6" lg="4">
+                    <div class="bank-card" style="background:@GradientFor(acc)">
+                        <div class="d-flex justify-space-between align-start">
+                            <div>
+                                <div class="bank-name">@acc.Institution</div>
+                                <div class="bank-type">@acc.AccountType @(string.IsNullOrWhiteSpace(acc.Nickname) ? "" : $"· {acc.Nickname}")</div>
+                            </div>
+                            <div>
+                                <MudIconButton Icon="@Icons.Material.Rounded.Edit" Size="Size.Small" Style="color:#fff" OnClick="@(() => OpenEdit(acc))" />
+                                <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" Style="color:#fff" OnClick="@(() => Delete(acc))" />
+                            </div>
+                        </div>
+                        <div class="bank-number">•••• •••• •••• @(string.IsNullOrWhiteSpace(acc.Last4) ? "0000" : acc.Last4)</div>
+                        <div class="d-flex justify-space-between align-end">
+                            <div>
+                                <div class="bank-type">@(acc.IsCredit ? "Outstanding" : "Balance")</div>
+                                <div class="bank-balance">?@acc.Balance.ToString("N0")</div>
+                            </div>
+                            @if (acc.IsCredit && acc.CreditLimit > 0)
+                            {
+                                <div class="text-end">
+                                    <div class="bank-type">Limit</div>
+                                    <div class="fw-bold">?@acc.CreditLimit.ToString("N0")</div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</div>
+
+<MudDialog @bind-Visible="DialogOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6" Class="fw-bold">@(Editing.Id == null ? "Add Account" : "Edit Account")</MudText></TitleContent>
+    <DialogContent>
+        <MudAutocomplete T="string" @bind-Value="Editing.Institution" Label="Bank / Institution" SearchFunc="SearchBanks" CoerceValue="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+        <MudSelect T="string" @bind-Value="Editing.AccountType" Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3">
+            @foreach (var t in AccountTypes) { <MudSelectItem Value="@t">@t</MudSelectItem> }
+        </MudSelect>
+        <MudTextField @bind-Value="Editing.Nickname" Label="Nickname (optional)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+        <MudTextField @bind-Value="Editing.Last4" Label="Last 4 digits (optional)" MaxLength="4" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+        <MudNumericField @bind-Value="Editing.Balance" Label="@(Editing.IsCredit ? "Outstanding Due (?)" : "Current Balance (?)")" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+        @if (Editing.IsCredit)
+        {
+            <MudNumericField @bind-Value="Editing.CreditLimit" Label="Credit Limit (?)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => DialogOpen = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="IsSaving">@(IsSaving ? "Saving..." : "Save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<BankAccount> AccountList = new();
+    private BankAccount Editing = new();
+    private bool DialogOpen, IsSaving, IsFetching = true;
+    private string CurrentUserId = "";
+
+    private static readonly string[] AccountTypes = { "Savings", "Current", "Salary", "Credit Card", "Wallet" };
+    private static readonly string[] KnownBanks =
+    {
+        "HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank", "Kotak Mahindra Bank", "IDFC First Bank",
+        "Yes Bank", "IndusInd Bank", "Bank of Baroda", "Punjab National Bank", "Canara Bank", "Union Bank of India",
+        "AU Small Finance Bank", "Federal Bank", "RBL Bank", "American Express", "Standard Chartered", "HSBC",
+        "Paytm", "PhonePe", "Google Pay", "Amazon Pay", "Jupiter", "Fi Money"
+    };
+
+    private decimal CashTotal => AccountList.Where(a => !a.IsCredit).Sum(a => a.Balance);
+    private decimal CardDue => AccountList.Where(a => a.IsCredit).Sum(a => a.Balance);
+    private double Utilization
+    {
+        get
+        {
+            var limit = AccountList.Where(a => a.IsCredit).Sum(a => a.CreditLimit);
+            return limit > 0 ? (double)(CardDue / limit * 100) : 0;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        CurrentUserId = authState.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value ?? "";
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        if (string.IsNullOrEmpty(CurrentUserId)) { IsFetching = false; return; }
+        try
+        {
+            var res = await SupabaseClient.From<BankAccount>().Where(x => x.UserId == CurrentUserId).Get();
+            AccountList = res.Models;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading accounts: {ex.Message}", Severity.Error);
+        }
+        finally { IsFetching = false; }
+    }
+
+    private Task<IEnumerable<string>> SearchBanks(string value, CancellationToken _) =>
+        Task.FromResult(string.IsNullOrWhiteSpace(value) ? KnownBanks.AsEnumerable() : KnownBanks.Where(b => b.Contains(value, StringComparison.OrdinalIgnoreCase)));
+
+    private void OpenNew() { Editing = new BankAccount(); DialogOpen = true; }
+
+    private void OpenEdit(BankAccount a)
+    {
+        Editing = new BankAccount { Id = a.Id, UserId = a.UserId, Institution = a.Institution, Nickname = a.Nickname, AccountType = a.AccountType, Last4 = a.Last4, Balance = a.Balance, CreditLimit = a.CreditLimit };
+        DialogOpen = true;
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(Editing.Institution)) { Snackbar.Add("Please enter a bank name.", Severity.Warning); return; }
+        IsSaving = true;
+        try
+        {
+            Editing.UserId = CurrentUserId;
+            if (!Editing.IsCredit) Editing.CreditLimit = 0;
+            if (Editing.Id == null) await SupabaseClient.From<BankAccount>().Insert(Editing);
+            else await SupabaseClient.From<BankAccount>().Update(Editing);
+            Snackbar.Add("Account saved.", Severity.Success);
+            DialogOpen = false;
+            await Load();
+        }
+        catch (Exception ex) { Snackbar.Add($"Save failed: {ex.Message}", Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    private async Task Delete(BankAccount a)
+    {
+        try
+        {
+            await SupabaseClient.From<BankAccount>().Where(x => x.Id == a.Id).Delete();
+            AccountList.Remove(a);
+            Snackbar.Add($"{a.Institution} removed.", Severity.Info);
+        }
+        catch (Exception ex) { Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error); }
+    }
+
+    private static string GradientFor(BankAccount a)
+    {
+        var n = (a.Institution ?? "").ToLowerInvariant();
+        if (n.Contains("hdfc")) return "linear-gradient(135deg,#004c8f,#0a74d1)";
+        if (n.Contains("icici")) return "linear-gradient(135deg,#ae282e,#f37e20)";
+        if (n.Contains("sbi") || n.Contains("state bank")) return "linear-gradient(135deg,#1a5aa8,#22b5e8)";
+        if (n.Contains("axis")) return "linear-gradient(135deg,#97144d,#c2185b)";
+        if (n.Contains("kotak")) return "linear-gradient(135deg,#ed1c24,#003874)";
+        if (n.Contains("amex") || n.Contains("american")) return "linear-gradient(135deg,#2e77bb,#6cb4ee)";
+        if (a.IsCredit) return "linear-gradient(135deg,#0f172a,#475569)";
+        if (a.AccountType == "Wallet") return "linear-gradient(135deg,#7c3aed,#a855f7)";
+        return "linear-gradient(135deg,#047857,#10b981)";
+    }
+}

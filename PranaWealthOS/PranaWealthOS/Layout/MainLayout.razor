@@ -15,9 +15,10 @@
     <AuthorizeView>
         <Authorized Context="authState">
             <MudLayout>
-                <MudAppBar Elevation="1" Color="Color.Surface" Class="border-bottom">
-                    <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-                    <MudText Typo="Typo.h5" Class="ms-2 fw-bold" Color="Color.Primary">ArthaOne</MudText>
+                <MudAppBar Elevation="0" Class="app-bar-glass">
+                    <MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+                    <img src="ArthaOneLogo.png" alt="" style="height:28px;width:28px;border-radius:8px" class="ms-2" />
+                    <MudText Typo="Typo.h6" Class="ms-2 fw-bold brand-text">ArthaOne</MudText>
                     <MudSpacer />
 
                     <MudToggleIconButton @bind-Toggled="@_isDarkMode"
@@ -34,18 +35,23 @@
                     </MudTooltip>
                 </MudAppBar>
 
-                <MudDrawer @bind-Open="_drawerOpen" Elevation="2" ClipMode="DrawerClipMode.Always">
-                    <MudDrawerHeader Class="align-items-center">
-                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Primary" Size="Size.Large" Class="me-2" />
-                        <MudText Typo="Typo.h6" Class="fw-bold">Menu</MudText>
-                    </MudDrawerHeader>
+                <MudDrawer @bind-Open="_drawerOpen" Elevation="0" ClipMode="DrawerClipMode.Always" Variant="DrawerVariant.Responsive" Class="app-drawer">
+                    <MudNavMenu Class="mt-4 px-2 modern-nav" Rounded="true" Margin="Margin.Dense" Color="Color.Primary">
+                        <div class="nav-section">Overview</div>
+                        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.SpaceDashboard">Dashboard</MudNavLink>
 
-                    <MudNavMenu Class="mt-2">
-                        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Overview</MudNavLink>
-                        <MudNavLink Href="/investments" Icon="@Icons.Material.Filled.TrendingUp">Investments</MudNavLink>
-                        <MudNavLink Href="/expenses" Icon="@Icons.Material.Filled.ReceiptLong">Cashflow</MudNavLink>
-                        <MudNavLink Href="/fire-goals" Icon="@Icons.Material.Filled.LocalFireDepartment">FIRE Strategy</MudNavLink>
-                        <MudNavLink Href="/profile" Icon="@Icons.Material.Filled.Person" IconColor="Color.Primary">Profile & Settings</MudNavLink>
+                        <div class="nav-section">Money</div>
+                        <MudNavLink Href="/transactions" Icon="@Icons.Material.Rounded.ReceiptLong">Transactions</MudNavLink>
+                        <MudNavLink Href="/accounts" Icon="@Icons.Material.Rounded.AccountBalance">Accounts</MudNavLink>
+                        <MudNavLink Href="/subscriptions" Icon="@Icons.Material.Rounded.Autorenew">Subscriptions</MudNavLink>
+                        <MudNavLink Href="/expenses" Icon="@Icons.Material.Rounded.EventRepeat">Fixed Monthly Costs</MudNavLink>
+
+                        <div class="nav-section">Wealth</div>
+                        <MudNavLink Href="/investments" Icon="@Icons.Material.Rounded.ShowChart">Investments</MudNavLink>
+                        <MudNavLink Href="/fire-goals" Icon="@Icons.Material.Rounded.LocalFireDepartment">FIRE Strategy</MudNavLink>
+
+                        <div class="nav-section">Account</div>
+                        <MudNavLink Href="/profile" Icon="@Icons.Material.Rounded.Settings">Profile & Settings</MudNavLink>
                     </MudNavMenu>
                 </MudDrawer>
 
@@ -89,7 +95,7 @@
     {
         PaletteLight = new PaletteLight()
         {
-            Primary = "#1e3a8a",
+            Primary = "#4f46e5",
             Secondary = "#f59e0b",
             AppbarBackground = "#ffffff",
             AppbarText = "#1f2937",
@@ -103,22 +109,25 @@
         },
         PaletteDark = new PaletteDark()
         {
-            Primary = "#3b82f6",
+            Primary = "#818cf8",
             Secondary = "#f59e0b",
-            AppbarBackground = "#111827",
+            AppbarBackground = "#0b1120",
             AppbarText = "#f9fafb",
-            Background = "#0f172a",
-            Surface = "#1e293b",
+            Background = "#0b1120",
+            Surface = "#111a2e",
+            LinesDefault = "#1f2a44",
             TextPrimary = "#f9fafb",
             TextSecondary = "#94a3b8",
             Success = "#10b981",
             Warning = "#f59e0b",
             Error = "#ef4444",
-            DrawerBackground = "#111827"
+            DrawerBackground = "#0b1120"
         },
+        LayoutProperties = new LayoutProperties() { DefaultBorderRadius = "12px" },
         Typography = new Typography()
         {
-            Default = new DefaultTypography() { FontFamily = new[] { "Inter", "Helvetica", "Arial", "sans-serif" } }
+            Default = new DefaultTypography() { FontFamily = new[] { "Inter", "Helvetica", "Arial", "sans-serif" } },
+            Button = new ButtonTypography() { FontFamily = new[] { "Inter", "sans-serif" }, TextTransform = "none", FontWeight = "600" }
         }
     };
 

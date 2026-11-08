@@ -552,7 +552,19 @@
 
     private async Task HandleStockUpload(InputFileChangeEventArgs e)
     {
-        using var stream = e.File.OpenReadStream();
+        try { await ImportStocks(e); Snackbar.Add("Stocks updated.", Severity.Success); }
+        catch (Exception ex) { Snackbar.Add($"Couldn't read stock file. Upload the broker 'Holdings' .xlsx with a 'Stock Name' header. ({ex.Message})", Severity.Error); }
+    }
+
+    private async Task HandleMFUpload(InputFileChangeEventArgs e)
+    {
+        try { await ImportMFs(e); Snackbar.Add("Mutual funds updated.", Severity.Success); }
+        catch (Exception ex) { Snackbar.Add($"Couldn't read MF file. Upload the broker 'Holdings' .xlsx with a 'Scheme Name' header. ({ex.Message})", Severity.Error); }
+    }
+
+    private async Task ImportStocks(InputFileChangeEventArgs e)
+    {
+        using var stream = e.File.OpenReadStream(10 * 1024 * 1024);
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
         ms.Position = 0;
@@ -575,6 +587,8 @@
             newCloudStocks.Add(new AssetModel { UserId = CurrentUserId, AssetType = "Stock", Name = firstCell, InvestedValue = invested, CurrentValue = closing });
         }
 
+        if (!newCloudStocks.Any()) throw new InvalidDataException("No holdings found");
+
         var newGrouped = newCloudStocks.GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => new AssetModel { UserId = CurrentUserId, AssetType = "Stock", Name = g.Key, InvestedValue = g.Sum(s => s.InvestedValue), CurrentValue = g.Sum(s => s.CurrentValue) }).ToList();
 
@@ -590,9 +604,9 @@
         await LoadAssetsFromCloud();
     }
 
-    private async Task HandleMFUpload(InputFileChangeEventArgs e)
+    private async Task ImportMFs(InputFileChangeEventArgs e)
     {
-        using var stream = e.File.OpenReadStream();
+        using var stream = e.File.OpenReadStream(10 * 1024 * 1024);
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms);
         ms.Position = 0;
@@ -614,6 +628,8 @@
 
             newCloudMFs.Add(new AssetModel { UserId = CurrentUserId, AssetType = "MF", Name = firstCell, InvestedValue = invested, CurrentValue = current });
         }
+
+        if (!newCloudMFs.Any()) throw new InvalidDataException("No holdings found");
 
         var newGrouped = newCloudMFs.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => new AssetModel { UserId = CurrentUserId, AssetType = "MF", Name = g.Key, InvestedValue = g.Sum(m => m.InvestedValue), CurrentValue = g.Sum(m => m.CurrentValue) }).ToList();

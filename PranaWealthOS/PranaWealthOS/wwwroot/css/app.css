@@ -1,6 +1,153 @@
 html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
 }
+
+/* ---------- Modern shell ---------- */
+.app-bar-glass {
+    backdrop-filter: saturate(180%) blur(12px);
+    background: color-mix(in srgb, var(--mud-palette-appbar-background) 80%, transparent) !important;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+}
+
+.brand-text {
+    background: linear-gradient(90deg, #6366f1, #10b981);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.02em;
+}
+
+.app-drawer { border-right: 1px solid var(--mud-palette-lines-default) !important; }
+
+.nav-section {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--mud-palette-text-secondary);
+    padding: 16px 16px 6px;
+    opacity: 0.8;
+}
+
+.modern-nav .mud-nav-link { border-radius: 10px; margin: 2px 0; font-weight: 500; }
+
+/* ---------- Page primitives ---------- */
+.page-wrap { max-width: 1280px; margin: 0 auto; padding-top: 8px; }
+
+.page-header {
+    display: flex; flex-wrap: wrap; gap: 16px;
+    justify-content: space-between; align-items: flex-end;
+    margin-bottom: 24px;
+}
+
+.page-title {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 800; letter-spacing: -0.02em; margin: 0;
+    color: var(--mud-palette-text-primary);
+}
+
+.stat-card, .panel, .empty-state {
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 16px;
+    padding: 20px;
+    height: 100%;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.stat-card { display: flex; flex-direction: column; gap: 4px; }
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+.stat-label { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--mud-palette-text-secondary); }
+.stat-value { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; }
+.stat-sub { font-size: .8rem; color: var(--mud-palette-text-secondary); }
+
+.panel-title { font-weight: 700; font-size: 1.05rem; margin-bottom: 12px; }
+
+.empty-state { text-align: center; padding: 48px 24px; display: flex; flex-direction: column; align-items: center; }
+
+.list-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 8px; border-radius: 12px;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+}
+.list-row:last-child { border-bottom: none; }
+.list-row:hover { background: var(--mud-palette-action-default-hover); }
+
+.brand-avatar {
+    width: 42px; height: 42px; min-width: 42px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: 1.1rem;
+}
+
+/* ---------- Bank cards ---------- */
+.bank-card {
+    color: #fff; border-radius: 18px; padding: 20px;
+    min-height: 190px; display: flex; flex-direction: column; justify-content: space-between;
+    box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    position: relative; overflow: hidden;
+    transition: transform .2s ease;
+}
+.bank-card::after {
+    content: ""; position: absolute; width: 220px; height: 220px; border-radius: 50%;
+    background: rgba(255,255,255,.08); right: -60px; top: -80px;
+}
+.bank-card:hover { transform: translateY(-3px); }
+.bank-name { font-weight: 800; font-size: 1.15rem; }
+.bank-type { font-size: .75rem; opacity: .8; }
+.bank-number { font-family: ui-monospace, monospace; letter-spacing: .15em; opacity: .9; }
+.bank-balance { font-size: 1.5rem; font-weight: 800; }
+
+.opacity-50 { opacity: .5; }
+
+/* ---------- Transactions ---------- */
+.month-nav { display: flex; align-items: center; gap: 4px; }
+.month-label { font-size: 1.25rem; font-weight: 800; min-width: 170px; text-align: center; letter-spacing: -0.01em; }
+
+.day-header {
+    display: flex; justify-content: space-between;
+    font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--mud-palette-text-secondary);
+    padding: 14px 8px 4px;
+}
+.txn-row { cursor: pointer; }
+.cursor-pointer { cursor: pointer; }
+
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+
+.stack-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--mud-palette-lines-default); }
+.stack-bar > div { height: 100%; }
+
+.trend-chart { display: flex; align-items: flex-end; gap: 8px; height: 140px; }
+.trend-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; cursor: pointer; border-radius: 8px; padding: 4px 0; }
+.trend-col.active { background: var(--mud-palette-action-default-hover); }
+.trend-bars { flex: 1; display: flex; align-items: flex-end; gap: 3px; width: 100%; justify-content: center; }
+.trend-bars .bar { width: 10px; border-radius: 4px 4px 0 0; min-height: 2px; transition: height .3s ease; }
+.trend-bars .bar.in { background: #10b981; }
+.trend-bars .bar.out { background: #ef4444; }
+.trend-label { font-size: .7rem; color: var(--mud-palette-text-secondary); margin-top: 4px; }
+
+.cat-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.cat-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 10px; border-radius: 999px; font-size: .78rem; font-weight: 500;
+    border: 1px solid var(--mud-palette-lines-default); cursor: pointer; user-select: none;
+    color: var(--c);
+}
+.cat-pill span { color: var(--mud-palette-text-primary); }
+.cat-pill:hover { background: color-mix(in srgb, var(--c) 10%, transparent); }
+.cat-pill.selected { background: var(--c); border-color: var(--c); color: #fff; }
+.cat-pill.selected span { color: #fff; }
+
+.drop-zone {
+    position: relative; border: 2px dashed var(--mud-palette-lines-inputs); border-radius: 16px;
+    padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center;
+    transition: border-color .2s, background .2s;
+}
+.drop-zone:hover { border-color: var(--mud-palette-primary); background: var(--mud-palette-action-default-hover); }
+.drop-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.fab-add { position: fixed !important; right: 20px; bottom: 20px; z-index: 1200; }
 
 h1:focus {
     outline: none;

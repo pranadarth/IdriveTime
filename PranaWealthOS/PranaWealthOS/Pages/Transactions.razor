@@ -1,0 +1,746 @@
+@page "/transactions"
+@inject Supabase.Client SupabaseClient
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@using PranaWealthOS.Models
+@using PranaWealthOS.Services
+@using System.Security.Claims
+@using static Postgrest.Constants
+
+<PageTitle>ArthaOne - Transactions</PageTitle>
+
+<div class="page-wrap">
+    <div class="page-header">
+        <div>
+            <h2 class="page-title"><MudIcon Icon="@Icons.Material.Rounded.ReceiptLong" /> Transactions</h2>
+            <MudText Typo="Typo.body2" Class="text-muted">Every rupee in and out. Import statements, set budgets, stay in control.</MudText>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="@(() => ImportOpen = true)" Class="rounded-pill">Import</MudButton>
+            <MudMenu Label="Export" StartIcon="@Icons.Material.Rounded.Download" Variant="Variant.Outlined" Color="Color.Primary" Class="rounded-pill">
+                <MudMenuItem OnClick="@(() => Export(false))">This month (CSV)</MudMenuItem>
+                <MudMenuItem OnClick="@(() => Export(true))">Last 12 months (CSV)</MudMenuItem>
+            </MudMenu>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="@(() => OpenNew("Expense"))" Class="rounded-pill px-5">Add</MudButton>
+        </div>
+    </div>
+
+    <!-- MONTH NAVIGATOR -->
+    <div class="month-nav mb-5">
+        <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft" OnClick="@(() => ChangeMonth(-1))" />
+        <div class="month-label">@Month.ToString("MMMM yyyy")</div>
+        <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight" OnClick="@(() => ChangeMonth(1))" Disabled="@(Month >= ThisMonth)" />
+        @if (Month != ThisMonth)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => { Month = ThisMonth; })">Today</MudButton>
+        }
+    </div>
+
+    <!-- STATS -->
+    <MudGrid Spacing="4" Class="mb-5">
+        <MudItem xs="6" md="3">
+            <div class="stat-card">
+                <span class="stat-label">Spent</span>
+                <span class="stat-value text-error">?@Spent.ToString("N0")</span>
+                @if (PrevSpent > 0)
+                {
+                    var diff = (double)((Spent - PrevSpent) / PrevSpent * 100);
+                    <span class="stat-sub" style="color:@(diff > 0 ? "var(--mud-palette-error)" : "var(--mud-palette-success)")">
+                        @(diff > 0 ? "?" : "?") @Math.Abs(diff).ToString("F0")% vs last month
+                    </span>
+                }
+            </div>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <div class="stat-card">
+                <span class="stat-label">Income</span>
+                <span class="stat-value text-success">?@Earned.ToString("N0")</span>
+                <span class="stat-sub">@MonthTxns.Count(t => !t.IsExpense) credits</span>
+            </div>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <div class="stat-card">
+                <span class="stat-label">Net Saved</span>
+                <span class="stat-value" style="color:@(Earned - Spent >= 0 ? "var(--mud-palette-success)" : "var(--mud-palette-error)")">?@((Earned - Spent).ToString("N0"))</span>
+                <span class="stat-sub">@(Earned > 0 ? $"{(double)((Earned - Spent) / Earned * 100):F0}% savings rate" : "Add income to see savings rate")</span>
+            </div>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <div class="stat-card">
+                <span class="stat-label">Daily Average</span>
+                <span class="stat-value">?@DailyAvg.ToString("N0")</span>
+                <span class="stat-sub">
+                    @if (Month == ThisMonth && Spent > 0)
+                    {
+                        <text>Projected: ?@((DailyAvg * DateTime.DaysInMonth(Month.Year, Month.Month)).ToString("N0"))</text>
+                    }
+                    else
+                    {
+                        <text>@MonthTxns.Count(t => t.IsExpense) expenses</text>
+                    }
+                </span>
+            </div>
+        </MudItem>
+    </MudGrid>
+
+    @if (IsFetching)
+    {
+        <div class="d-flex justify-center my-8"><MudProgressCircular Color="Color.Primary" Indeterminate="true" /></div>
+    }
+    else
+    {
+        <MudGrid Spacing="4">
+            <!-- LEFT: TRANSACTION LIST -->
+            <MudItem xs="12" lg="8">
+                <div class="panel">
+                    <div class="d-flex flex-wrap gap-2 mb-3 align-center">
+                        <MudTextField @bind-Value="Search" Placeholder="Search transactions..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" DebounceInterval="200" Clearable="true" Style="min-width:200px" Class="flex-grow-1" />
+                        <MudSelect T="string" @bind-Value="FilterCategory" Label="Category" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Style="max-width:200px">
+                            @foreach (var c in Categories.Expense.Concat(Categories.Income)) { <MudSelectItem Value="@c.Name">@c.Name</MudSelectItem> }
+                        </MudSelect>
+                        <MudChipSet T="string" @bind-SelectedValue="FilterType" SelectionMode="SelectionMode.SingleSelection" CheckMark="false">
+                            <MudChip Value="@("All")" Variant="Variant.Text" Color="Color.Primary">All</MudChip>
+                            <MudChip Value="@("Expense")" Variant="Variant.Text" Color="Color.Error">Out</MudChip>
+                            <MudChip Value="@("Income")" Variant="Variant.Text" Color="Color.Success">In</MudChip>
+                        </MudChipSet>
+                    </div>
+
+                    @if (!Filtered.Any())
+                    {
+                        <div class="text-center py-10">
+                            <MudIcon Icon="@Icons.Material.Rounded.Inbox" Size="Size.Large" Class="text-muted" />
+                            <MudText Typo="Typo.subtitle1" Class="fw-bold mt-2">No transactions here</MudText>
+                            <MudText Typo="Typo.body2" Class="text-muted mb-4">Add one manually or import your bank statement (CSV / Excel).</MudText>
+                            <div class="d-flex gap-2 justify-center">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => OpenNew("Expense"))" Class="rounded-pill">Add expense</MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => ImportOpen = true)" Class="rounded-pill">Import statement</MudButton>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var day in Filtered.GroupBy(t => t.TxnDate.Date).OrderByDescending(g => g.Key))
+                        {
+                            <div class="day-header">
+                                <span>@DayLabel(day.Key)</span>
+                                <span>
+                                    @if (day.Any(t => t.IsExpense)) { <span class="text-error">-?@day.Where(t => t.IsExpense).Sum(t => t.Amount).ToString("N0")</span> }
+                                    @if (day.Any(t => !t.IsExpense)) { <span class="text-success ms-2">+?@day.Where(t => !t.IsExpense).Sum(t => t.Amount).ToString("N0")</span> }
+                                </span>
+                            </div>
+                            @foreach (var t in day)
+                            {
+                                var cat = Categories.Get(t.Category);
+                                <div class="list-row txn-row" @onclick="@(() => OpenEdit(t))">
+                                    <div class="brand-avatar" style="background:@(cat.Color)22; color:@cat.Color">
+                                        <MudIcon Icon="@cat.Icon" Size="Size.Small" />
+                                    </div>
+                                    <div class="flex-grow-1" style="min-width:0">
+                                        <div class="fw-bold text-truncate">@t.Description</div>
+                                        <div class="text-muted small text-truncate">
+                                            @t.Category · @t.PaymentMode
+                                            @if (AccountName(t.AccountId) is string acc) { <span> · @acc</span> }
+                                        </div>
+                                    </div>
+                                    <div class="fw-bold text-nowrap @(t.IsExpense ? "" : "text-success")">
+                                        @(t.IsExpense ? "-" : "+")?@t.Amount.ToString("N0")
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+            </MudItem>
+
+            <!-- RIGHT: INSIGHTS -->
+            <MudItem xs="12" lg="4">
+                <!-- Spending by category -->
+                <div class="panel mb-4" style="height:auto">
+                    <div class="panel-title">Where it went</div>
+                    @if (Spent == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="text-muted">No spending this month yet.</MudText>
+                    }
+                    else
+                    {
+                        <div class="stack-bar mb-4">
+                            @foreach (var g in ByCategory)
+                            {
+                                <div title="@g.Name" style="width:@(((double)(g.Total / Spent * 100)).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%; background:@Categories.Get(g.Name).Color"></div>
+                            }
+                        </div>
+                        @foreach (var g in ByCategory.Take(8))
+                        {
+                            var info = Categories.Get(g.Name);
+                            <div class="d-flex align-center gap-2 py-1 cursor-pointer" @onclick="@(() => FilterCategory = g.Name)">
+                                <span class="dot" style="background:@info.Color"></span>
+                                <span class="flex-grow-1 small">@g.Name</span>
+                                <span class="small text-muted">@(((double)(g.Total / Spent * 100)).ToString("F0"))%</span>
+                                <b class="small" style="min-width:80px;text-align:right">?@g.Total.ToString("N0")</b>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <!-- Budgets -->
+                <div class="panel mb-4" style="height:auto">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <div class="panel-title m-0">Budgets</div>
+                        <MudButton Size="Size.Small" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenBudget">Set</MudButton>
+                    </div>
+                    @if (!Budgets.Any())
+                    {
+                        <MudText Typo="Typo.body2" Class="text-muted">Set monthly limits per category and get warned before you overspend.</MudText>
+                    }
+                    else
+                    {
+                        @foreach (var b in Budgets.OrderByDescending(b => SpentIn(b.Category) / Math.Max(b.MonthlyLimit, 1)))
+                        {
+                            var used = SpentIn(b.Category);
+                            var pct = b.MonthlyLimit > 0 ? (double)(used / b.MonthlyLimit * 100) : 0;
+                            var color = pct >= 100 ? Color.Error : pct >= 80 ? Color.Warning : Color.Success;
+                            <div class="mb-3">
+                                <div class="d-flex justify-space-between align-center small mb-1">
+                                    <span class="fw-bold d-flex align-center gap-1">
+                                        <MudIcon Icon="@Categories.Get(b.Category).Icon" Size="Size.Small" Style="@($"color:{Categories.Get(b.Category).Color}")" /> @b.Category
+                                    </span>
+                                    <span>
+                                        ?@used.ToString("N0") / ?@b.MonthlyLimit.ToString("N0")
+                                        <MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" OnClick="@(() => DeleteBudget(b))" Style="padding:2px" />
+                                    </span>
+                                </div>
+                                <MudProgressLinear Value="@Math.Min(pct, 100)" Color="@color" Rounded="true" Size="Size.Medium" />
+                                @if (pct >= 100)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Error">Over by ?@((used - b.MonthlyLimit).ToString("N0"))</MudText>
+                                }
+                                else if (Month == ThisMonth)
+                                {
+                                    var daysLeft = DateTime.DaysInMonth(Month.Year, Month.Month) - DateTime.Today.Day + 1;
+                                    <MudText Typo="Typo.caption" Class="text-muted">?@(((b.MonthlyLimit - used) / daysLeft).ToString("N0"))/day left for @daysLeft days</MudText>
+                                }
+                            </div>
+                        }
+                        <MudDivider Class="my-2" />
+                        <div class="d-flex justify-space-between small">
+                            <span class="text-muted">Total budget</span>
+                            <b>?@Budgets.Sum(b => SpentIn(b.Category)).ToString("N0") / ?@Budgets.Sum(b => b.MonthlyLimit).ToString("N0")</b>
+                        </div>
+                    }
+                </div>
+
+                <!-- 6-month trend -->
+                <div class="panel mb-4" style="height:auto">
+                    <div class="panel-title">6-Month Trend</div>
+                    @{ var trend = Trend(); var max = Math.Max(1, trend.Max(x => Math.Max(x.Spent, x.Earned))); }
+                    <div class="trend-chart">
+                        @foreach (var m in trend)
+                        {
+                            <div class="trend-col @(m.Month == Month ? "active" : "")" @onclick="@(() => Month = m.Month)" title="@m.Month.ToString("MMM yyyy"): Spent ?@m.Spent.ToString("N0"), Income ?@m.Earned.ToString("N0")">
+                                <div class="trend-bars">
+                                    <div class="bar in" style="height:@Pct(m.Earned, max)%"></div>
+                                    <div class="bar out" style="height:@Pct(m.Spent, max)%"></div>
+                                </div>
+                                <div class="trend-label">@m.Month.ToString("MMM")</div>
+                            </div>
+                        }
+                    </div>
+                    <div class="d-flex gap-4 small mt-2 justify-center">
+                        <span><span class="dot" style="background:#10b981"></span> Income</span>
+                        <span><span class="dot" style="background:#ef4444"></span> Spent</span>
+                    </div>
+                </div>
+
+                <!-- Smart insights -->
+                @if (Insights.Any())
+                {
+                    <div class="panel" style="height:auto">
+                        <div class="panel-title d-flex align-center gap-1"><MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Color="Color.Warning" Size="Size.Small" /> Insights</div>
+                        @foreach (var i in Insights)
+                        {
+                            <div class="d-flex gap-2 py-2 small"><span>•</span><span>@((MarkupString)i)</span></div>
+                        }
+                    </div>
+                }
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+<!-- Floating quick add for mobile -->
+<MudFab Class="fab-add d-lg-none" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="@(() => OpenNew("Expense"))" />
+
+<!-- ADD / EDIT DIALOG -->
+<MudDialog @bind-Visible="EditOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6" Class="fw-bold">@(Editing.Id == null ? "New Transaction" : "Edit Transaction")</MudText></TitleContent>
+    <DialogContent>
+        <MudToggleGroup T="string" Value="Editing.TxnType" ValueChanged="SetType" Color="@(Editing.IsExpense ? Color.Error : Color.Success)" FixedContent="true" Class="mb-4 w-100">
+            <MudToggleItem Value="@("Expense")" Text="Expense" />
+            <MudToggleItem Value="@("Income")" Text="Income" />
+        </MudToggleGroup>
+
+        <MudNumericField @bind-Value="Editing.Amount" Label="Amount (?)" Format="N0" Variant="Variant.Outlined" Class="mb-3" Adornment="Adornment.Start" AdornmentText="?" HideSpinButtons="true" />
+        <MudTextField @bind-Value="Editing.Description" Label="Description" Placeholder="e.g. Swiggy dinner" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3"
+                      Immediate="true" OnBlur="AutoCat" />
+
+        <MudText Typo="Typo.caption" Class="text-muted">Category</MudText>
+        <div class="cat-grid mb-3">
+            @foreach (var c in Editing.IsExpense ? Categories.Expense : Categories.Income)
+            {
+                <div class="cat-pill @(Editing.Category == c.Name ? "selected" : "")" style="--c:@c.Color" @onclick="@(() => Editing.Category = c.Name)">
+                    <MudIcon Icon="@c.Icon" Size="Size.Small" /> <span>@c.Name</span>
+                </div>
+            }
+        </div>
+
+        <MudGrid Spacing="2">
+            <MudItem xs="6">
+                <MudDatePicker @bind-Date="EditDate" Label="Date" Variant="Variant.Outlined" Margin="Margin.Dense" MaxDate="DateTime.Today" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect T="string" @bind-Value="Editing.PaymentMode" Label="Paid via" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var p in Categories.PaymentModes) { <MudSelectItem Value="@p">@p</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+        @if (Accounts.Any())
+        {
+            <MudSelect T="string" @bind-Value="Editing.AccountId" Label="Account" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-3">
+                @foreach (var a in Accounts) { <MudSelectItem Value="@a.Id">@a.DisplayName</MudSelectItem> }
+            </MudSelect>
+        }
+        <MudTextField @bind-Value="Editing.Notes" Label="Notes (optional)" Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="mt-3" />
+    </DialogContent>
+    <DialogActions>
+        @if (Editing.Id != null)
+        {
+            <MudButton Color="Color.Error" StartIcon="@Icons.Material.Rounded.Delete" OnClick="DeleteEditing" Class="me-auto">Delete</MudButton>
+        }
+        <MudButton OnClick="@(() => EditOpen = false)">Cancel</MudButton>
+        @if (Editing.Id == null)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => Save(true))" Disabled="IsSaving">Save & add another</MudButton>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => Save(false))" Disabled="IsSaving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<!-- IMPORT DIALOG -->
+<MudDialog @bind-Visible="ImportOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6" Class="fw-bold">Import Bank / Card Statement</MudText></TitleContent>
+    <DialogContent>
+        @if (!ImportPreview.Any())
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">
+                Download your statement from net banking as <b>CSV, XLS or XLSX</b> and drop it here. Works with HDFC, ICICI, SBI, Axis, Kotak and most banks &amp; credit cards —
+                we auto-detect the Date / Narration / Debit / Credit columns and categorise each transaction for you. Nothing leaves your browser until you click Import.
+            </MudText>
+            @if (Accounts.Any())
+            {
+                <MudSelect T="string" @bind-Value="ImportAccountId" Label="Which account is this statement for? (optional)" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3">
+                    @foreach (var a in Accounts) { <MudSelectItem Value="@a.Id">@a.DisplayName</MudSelectItem> }
+                </MudSelect>
+            }
+            <div class="drop-zone">
+                <MudIcon Icon="@Icons.Material.Rounded.CloudUpload" Size="Size.Large" Color="Color.Primary" />
+                <MudText Typo="Typo.subtitle1" Class="fw-bold mt-2">Click or drop a statement file</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">.csv, .xls, .xlsx · up to 10 MB</MudText>
+                <InputFile OnChange="HandleImport" accept=".csv,.xls,.xlsx" class="drop-input" />
+            </div>
+            @if (IsParsing) { <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-3" /> }
+        }
+        else
+        {
+            <div class="d-flex flex-wrap justify-space-between align-center mb-3 gap-2">
+                <MudText Typo="Typo.body2">
+                    Found <b>@ImportPreview.Count</b> transactions ·
+                    <span class="text-error">?@ImportPreview.Where(r => r.Include && r.Txn.IsExpense).Sum(r => r.Txn.Amount).ToString("N0") out</span> ·
+                    <span class="text-success">?@ImportPreview.Where(r => r.Include && !r.Txn.IsExpense).Sum(r => r.Txn.Amount).ToString("N0") in</span>
+                    @if (ImportPreview.Any(r => r.Duplicate)) { <span class="text-warning"> · @ImportPreview.Count(r => r.Duplicate) duplicates skipped</span> }
+                </MudText>
+                <MudButton Size="Size.Small" OnClick="@(() => ImportPreview.Clear())" StartIcon="@Icons.Material.Rounded.ArrowBack">Choose another file</MudButton>
+            </div>
+            <MudTable Items="ImportPreview" Dense="true" Hover="true" FixedHeader="true" Height="50vh" Elevation="0">
+                <HeaderContent>
+                    <MudTh Style="width:40px"></MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh>Category</MudTh>
+                    <MudTh Style="text-align:right">Amount</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><MudCheckBox @bind-Value="context.Include" Size="Size.Small" Dense="true" /></MudTd>
+                    <MudTd Class="text-nowrap">@context.Txn.TxnDate.ToString("dd MMM yy")</MudTd>
+                    <MudTd>
+                        <div class="text-truncate" style="max-width:360px" title="@context.Txn.Description">@context.Txn.Description</div>
+                        @if (context.Duplicate) { <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">Already exists</MudChip> }
+                    </MudTd>
+                    <MudTd>
+                        <MudSelect T="string" @bind-Value="context.Txn.Category" Dense="true" Margin="Margin.Dense" Underline="false">
+                            @foreach (var c in context.Txn.IsExpense ? Categories.Expense : Categories.Income) { <MudSelectItem Value="@c.Name">@c.Name</MudSelectItem> }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd Style="text-align:right" Class="@($"fw-bold text-nowrap {(context.Txn.IsExpense ? "" : "text-success")}")">
+                        @(context.Txn.IsExpense ? "-" : "+")?@context.Txn.Amount.ToString("N0")
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseImport">Cancel</MudButton>
+        @if (ImportPreview.Any())
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CommitImport" Disabled="IsSaving">
+                @(IsSaving ? "Importing..." : $"Import {ImportPreview.Count(r => r.Include)} transactions")
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+<!-- BUDGET DIALOG -->
+<MudDialog @bind-Visible="BudgetOpen" Options="new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6" Class="fw-bold">Set Monthly Budget</MudText></TitleContent>
+    <DialogContent>
+        <MudSelect T="string" @bind-Value="NewBudget.Category" Label="Category" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3">
+            @foreach (var c in Categories.Expense) { <MudSelectItem Value="@c.Name">@c.Name</MudSelectItem> }
+        </MudSelect>
+        <MudNumericField @bind-Value="NewBudget.MonthlyLimit" Label="Monthly limit (?)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" HideSpinButtons="true" />
+        @if (!string.IsNullOrEmpty(NewBudget.Category))
+        {
+            var avg = AvgMonthlySpend(NewBudget.Category);
+            if (avg > 0)
+            {
+                <MudText Typo="Typo.caption" Class="text-muted">You spend ~?@avg.ToString("N0")/month on this on average.
+                    <MudLink OnClick="@(() => NewBudget.MonthlyLimit = Math.Round(avg * 0.9m / 100) * 100)" Typo="Typo.caption">Use 10% less</MudLink>
+                </MudText>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => BudgetOpen = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveBudget">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private class ImportRow { public Transaction Txn { get; set; } = new(); public bool Include { get; set; } = true; public bool Duplicate { get; set; } }
+
+    private List<Transaction> AllTxns = new();
+    private List<Budget> Budgets = new();
+    private List<BankAccount> Accounts = new();
+    private List<ImportRow> ImportPreview = new();
+
+    private Transaction Editing = new();
+    private Budget NewBudget = new();
+    private bool EditOpen, ImportOpen, BudgetOpen, IsSaving, IsParsing, IsFetching = true;
+    private string CurrentUserId = "";
+    private string? ImportAccountId;
+
+    private string? Search;
+    private string? FilterCategory;
+    private string FilterType = "All";
+
+    private static DateTime ThisMonth => new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime Month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+
+    private DateTime? EditDate
+    {
+        get => Editing.TxnDate;
+        set => Editing.TxnDate = value ?? DateTime.Today;
+    }
+
+    private IEnumerable<Transaction> InMonth(DateTime m) => AllTxns.Where(t => t.TxnDate.Year == m.Year && t.TxnDate.Month == m.Month);
+    private List<Transaction> MonthTxns => InMonth(Month).ToList();
+    private decimal Spent => MonthTxns.Where(t => t.IsExpense && t.Category != "Transfers").Sum(t => t.Amount);
+    private decimal Earned => MonthTxns.Where(t => !t.IsExpense).Sum(t => t.Amount);
+    private decimal PrevSpent => InMonth(Month.AddMonths(-1)).Where(t => t.IsExpense && t.Category != "Transfers").Sum(t => t.Amount);
+
+    private decimal DailyAvg
+    {
+        get
+        {
+            int days = Month == ThisMonth ? DateTime.Today.Day : DateTime.DaysInMonth(Month.Year, Month.Month);
+            return days > 0 ? Spent / days : 0;
+        }
+    }
+
+    private IEnumerable<Transaction> Filtered => MonthTxns
+        .Where(t => FilterType == "All" || t.TxnType == FilterType)
+        .Where(t => string.IsNullOrEmpty(FilterCategory) || t.Category == FilterCategory)
+        .Where(t => string.IsNullOrWhiteSpace(Search)
+                    || t.Description.Contains(Search, StringComparison.OrdinalIgnoreCase)
+                    || (t.Notes ?? "").Contains(Search, StringComparison.OrdinalIgnoreCase)
+                    || t.Category.Contains(Search, StringComparison.OrdinalIgnoreCase));
+
+    private List<(string Name, decimal Total)> ByCategory => MonthTxns
+        .Where(t => t.IsExpense && t.Category != "Transfers")
+        .GroupBy(t => t.Category)
+        .Select(g => (g.Key, g.Sum(t => t.Amount)))
+        .OrderByDescending(x => x.Item2).ToList();
+
+    private decimal SpentIn(string category) => MonthTxns.Where(t => t.IsExpense && t.Category == category).Sum(t => t.Amount);
+
+    private decimal AvgMonthlySpend(string category)
+    {
+        var months = Enumerable.Range(1, 3).Select(i => InMonth(ThisMonth.AddMonths(-i)).Where(t => t.IsExpense && t.Category == category).Sum(t => t.Amount)).Where(x => x > 0).ToList();
+        return months.Any() ? months.Average() : 0;
+    }
+
+    private List<(DateTime Month, decimal Spent, decimal Earned)> Trend() =>
+        Enumerable.Range(0, 6).Select(i => Month.AddMonths(i - 5)).Select(m =>
+        {
+            var tx = InMonth(m).ToList();
+            return (m, tx.Where(t => t.IsExpense && t.Category != "Transfers").Sum(t => t.Amount), tx.Where(t => !t.IsExpense).Sum(t => t.Amount));
+        }).ToList();
+
+    private static string Pct(decimal v, decimal max) => (max > 0 ? (double)(v / max * 100) : 0).ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+
+    private List<string> Insights
+    {
+        get
+        {
+            var list = new List<string>();
+            if (Spent == 0) return list;
+            var top = ByCategory.FirstOrDefault();
+            if (top.Total > 0) list.Add($"<b>{top.Name}</b> is your biggest spend this month at ?{top.Total:N0} ({(double)(top.Total / Spent * 100):F0}%).");
+
+            var prev = InMonth(Month.AddMonths(-1)).Where(t => t.IsExpense).GroupBy(t => t.Category).ToDictionary(g => g.Key, g => g.Sum(t => t.Amount));
+            var jump = ByCategory.Where(c => prev.TryGetValue(c.Name, out var p) && p > 500 && c.Total > p * 1.3m)
+                                 .OrderByDescending(c => c.Total - prev[c.Name]).FirstOrDefault();
+            if (jump.Total > 0) list.Add($"<b>{jump.Name}</b> is up ?{jump.Total - prev[jump.Name]:N0} compared to last month.");
+
+            var big = MonthTxns.Where(t => t.IsExpense && t.Category != "Transfers").OrderByDescending(t => t.Amount).FirstOrDefault();
+            if (big != null) list.Add($"Largest expense: <b>{System.Net.WebUtility.HtmlEncode(big.Description)}</b> — ?{big.Amount:N0} on {big.TxnDate:dd MMM}.");
+
+            var weekend = MonthTxns.Where(t => t.IsExpense && (t.TxnDate.DayOfWeek == DayOfWeek.Saturday || t.TxnDate.DayOfWeek == DayOfWeek.Sunday)).Sum(t => t.Amount);
+            if (weekend > Spent * 0.4m) list.Add($"{(double)(weekend / Spent * 100):F0}% of spending happened on weekends.");
+
+            var upi = MonthTxns.Count(t => t.IsExpense && t.PaymentMode == "UPI" && t.Amount < 200);
+            if (upi >= 15) list.Add($"{upi} small UPI payments under ?200 added up to ?{MonthTxns.Where(t => t.IsExpense && t.PaymentMode == "UPI" && t.Amount < 200).Sum(t => t.Amount):N0}.");
+            return list;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        CurrentUserId = authState.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value ?? "";
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        if (string.IsNullOrEmpty(CurrentUserId)) { IsFetching = false; return; }
+        try
+        {
+            var since = ThisMonth.AddMonths(-12).ToString("yyyy-MM-dd");
+            var res = await SupabaseClient.From<Transaction>()
+                .Where(x => x.UserId == CurrentUserId)
+                .Filter("txn_date", Operator.GreaterThanOrEqual, since)
+                .Order("txn_date", Ordering.Descending)
+                .Get();
+            AllTxns = res.Models;
+            try { Budgets = (await SupabaseClient.From<Budget>().Where(x => x.UserId == CurrentUserId).Get()).Models; } catch { }
+            try { Accounts = (await SupabaseClient.From<BankAccount>().Where(x => x.UserId == CurrentUserId).Get()).Models; } catch { }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error loading transactions: {ex.Message}", Severity.Error); }
+        finally { IsFetching = false; }
+    }
+
+    private void ChangeMonth(int delta) => Month = Month.AddMonths(delta);
+
+    private static string DayLabel(DateTime d) =>
+        d == DateTime.Today ? "Today" : d == DateTime.Today.AddDays(-1) ? "Yesterday" : d.ToString("ddd, dd MMM");
+
+    private string? AccountName(string? id) => id == null ? null : Accounts.FirstOrDefault(a => a.Id == id)?.DisplayName;
+
+    // ----- Add / Edit -----
+    private void OpenNew(string type)
+    {
+        var date = Month == ThisMonth ? DateTime.Today : Month;
+        Editing = new Transaction { TxnType = type, Category = type == "Income" ? "Salary" : "Food & Dining", TxnDate = date };
+        EditOpen = true;
+    }
+
+    private void OpenEdit(Transaction t)
+    {
+        Editing = new Transaction
+        {
+            Id = t.Id, UserId = t.UserId, TxnDate = t.TxnDate, Description = t.Description, Amount = t.Amount,
+            TxnType = t.TxnType, Category = t.Category, PaymentMode = t.PaymentMode, AccountId = t.AccountId, Notes = t.Notes
+        };
+        EditOpen = true;
+    }
+
+    private void SetType(string type)
+    {
+        Editing.TxnType = type;
+        Editing.Category = Categories.AutoCategorize(Editing.Description, type == "Income");
+    }
+
+    private void AutoCat()
+    {
+        if (Editing.Id != null || string.IsNullOrWhiteSpace(Editing.Description)) return;
+        var guess = Categories.AutoCategorize(Editing.Description, !Editing.IsExpense);
+        if (guess != "Other" && guess != "Other Income") Editing.Category = guess;
+    }
+
+    private async Task Save(bool addAnother)
+    {
+        if (Editing.Amount <= 0) { Snackbar.Add("Enter an amount.", Severity.Warning); return; }
+        if (string.IsNullOrWhiteSpace(Editing.Description)) Editing.Description = Editing.Category;
+        IsSaving = true;
+        try
+        {
+            Editing.UserId = CurrentUserId;
+            if (Editing.Id == null)
+            {
+                var res = await SupabaseClient.From<Transaction>().Insert(Editing);
+                AllTxns.AddRange(res.Models);
+            }
+            else
+            {
+                await SupabaseClient.From<Transaction>().Update(Editing);
+                var idx = AllTxns.FindIndex(t => t.Id == Editing.Id);
+                if (idx >= 0) AllTxns[idx] = Editing;
+            }
+            AllTxns = AllTxns.OrderByDescending(t => t.TxnDate).ToList();
+            CheckBudgetAlert(Editing);
+            Snackbar.Add("Saved.", Severity.Success);
+
+            if (addAnother)
+            {
+                var keep = Editing;
+                Editing = new Transaction { TxnType = keep.TxnType, TxnDate = keep.TxnDate, PaymentMode = keep.PaymentMode, AccountId = keep.AccountId, Category = keep.Category };
+            }
+            else EditOpen = false;
+        }
+        catch (Exception ex) { Snackbar.Add($"Save failed: {ex.Message}", Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    private void CheckBudgetAlert(Transaction t)
+    {
+        if (!t.IsExpense) return;
+        var b = Budgets.FirstOrDefault(x => x.Category == t.Category);
+        if (b == null || b.MonthlyLimit <= 0) return;
+        var used = InMonth(new DateTime(t.TxnDate.Year, t.TxnDate.Month, 1)).Where(x => x.IsExpense && x.Category == t.Category).Sum(x => x.Amount);
+        var pct = used / b.MonthlyLimit * 100;
+        if (pct >= 100) Snackbar.Add($"? {t.Category} budget exceeded (?{used:N0} / ?{b.MonthlyLimit:N0})", Severity.Error);
+        else if (pct >= 80) Snackbar.Add($"{t.Category} budget {pct:F0}% used", Severity.Warning);
+    }
+
+    private async Task DeleteEditing()
+    {
+        try
+        {
+            var id = Editing.Id;
+            await SupabaseClient.From<Transaction>().Where(x => x.Id == id).Delete();
+            AllTxns.RemoveAll(t => t.Id == id);
+            EditOpen = false;
+            Snackbar.Add("Deleted.", Severity.Info);
+        }
+        catch (Exception ex) { Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error); }
+    }
+
+    // ----- Import -----
+    private async Task HandleImport(InputFileChangeEventArgs e)
+    {
+        IsParsing = true;
+        StateHasChanged();
+        try
+        {
+            using var stream = e.File.OpenReadStream(10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            var parsed = StatementParser.Parse(ms, e.File.Name);
+            if (!parsed.Any()) { Snackbar.Add("No transactions found in this file.", Severity.Warning); return; }
+
+            var existing = new HashSet<string>(AllTxns.Select(Key));
+            ImportPreview = parsed.Select(t =>
+            {
+                t.AccountId = ImportAccountId;
+                if (ImportAccountId != null && Accounts.FirstOrDefault(a => a.Id == ImportAccountId)?.IsCredit == true) t.PaymentMode = "Credit Card";
+                var dup = existing.Contains(Key(t));
+                return new ImportRow { Txn = t, Duplicate = dup, Include = !dup };
+            }).OrderByDescending(r => r.Txn.TxnDate).ToList();
+        }
+        catch (Exception ex) { Snackbar.Add($"Couldn't read statement: {ex.Message}", Severity.Error); }
+        finally { IsParsing = false; }
+    }
+
+    private static string Key(Transaction t) => $"{t.TxnDate:yyyyMMdd}|{t.Amount:F2}|{t.TxnType}|{t.Description.Trim().ToLowerInvariant()}";
+
+    private async Task CommitImport()
+    {
+        var toInsert = ImportPreview.Where(r => r.Include).Select(r => { r.Txn.UserId = CurrentUserId; return r.Txn; }).ToList();
+        if (!toInsert.Any()) return;
+        IsSaving = true;
+        try
+        {
+            foreach (var chunk in toInsert.Chunk(200))
+                await SupabaseClient.From<Transaction>().Insert(chunk.ToList());
+            Snackbar.Add($"Imported {toInsert.Count} transactions.", Severity.Success);
+            var latest = toInsert.Max(t => t.TxnDate);
+            Month = new DateTime(latest.Year, latest.Month, 1);
+            CloseImport();
+            await Load();
+        }
+        catch (Exception ex) { Snackbar.Add($"Import failed: {ex.Message}", Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    private void CloseImport() { ImportOpen = false; ImportPreview.Clear(); ImportAccountId = null; }
+
+    // ----- Export -----
+    private async Task Export(bool fullYear)
+    {
+        var data = fullYear ? AllTxns : MonthTxns;
+        if (!data.Any()) { Snackbar.Add("Nothing to export.", Severity.Info); return; }
+        var csv = StatementParser.ToCsv(data, AccountName);
+        var name = fullYear ? $"ArthaOne_Transactions_{DateTime.Today:yyyyMMdd}.csv" : $"ArthaOne_{Month:yyyy_MM}.csv";
+        await JS.InvokeVoidAsync("arthaDownload", name, csv, "text/csv;charset=utf-8");
+    }
+
+    // ----- Budgets -----
+    private void OpenBudget() { NewBudget = new Budget { Category = ByCategory.Select(c => c.Name).FirstOrDefault(n => Budgets.All(b => b.Category != n)) ?? "Food & Dining" }; BudgetOpen = true; }
+
+    private async Task SaveBudget()
+    {
+        if (string.IsNullOrEmpty(NewBudget.Category) || NewBudget.MonthlyLimit <= 0) { Snackbar.Add("Pick a category and limit.", Severity.Warning); return; }
+        try
+        {
+            var existing = Budgets.FirstOrDefault(b => b.Category == NewBudget.Category);
+            if (existing != null)
+            {
+                existing.MonthlyLimit = NewBudget.MonthlyLimit;
+                await SupabaseClient.From<Budget>().Update(existing);
+            }
+            else
+            {
+                NewBudget.UserId = CurrentUserId;
+                var res = await SupabaseClient.From<Budget>().Insert(NewBudget);
+                Budgets.AddRange(res.Models);
+            }
+            BudgetOpen = false;
+        }
+        catch (Exception ex) { Snackbar.Add($"Budget save failed: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task DeleteBudget(Budget b)
+    {
+        try
+        {
+            await SupabaseClient.From<Budget>().Where(x => x.Id == b.Id).Delete();
+            Budgets.Remove(b);
+        }
+        catch (Exception ex) { Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error); }
+    }
+}

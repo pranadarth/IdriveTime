@@ -1,0 +1,270 @@
+@page "/subscriptions"
+@inject Supabase.Client SupabaseClient
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@using PranaWealthOS.Models
+@using System.Security.Claims
+
+<PageTitle>ArthaOne - Subscriptions</PageTitle>
+
+<div class="page-wrap">
+    <div class="page-header">
+        <div>
+            <h2 class="page-title"><MudIcon Icon="@Icons.Material.Rounded.Autorenew" /> Subscriptions</h2>
+            <MudText Typo="Typo.body2" Class="text-muted">Track recurring charges, see what renews next and spot what to cancel.</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNew" Class="rounded-pill px-5">Add Subscription</MudButton>
+    </div>
+
+    <MudGrid Spacing="4" Class="mb-6">
+        <MudItem xs="12" sm="4">
+            <div class="stat-card">
+                <span class="stat-label">Monthly Cost</span>
+                <span class="stat-value text-primary">?@MonthlyTotal.ToString("N0")</span>
+                <span class="stat-sub">@Active.Count() active subscriptions</span>
+            </div>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <div class="stat-card">
+                <span class="stat-label">Yearly Cost</span>
+                <span class="stat-value text-warning">?@((MonthlyTotal * 12).ToString("N0"))</span>
+                <span class="stat-sub">Invested at 12% for 10 yrs ? ?@OpportunityCost.ToString("N0")</span>
+            </div>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <div class="stat-card">
+                <span class="stat-label">Renewing in 7 days</span>
+                <span class="stat-value text-error">@DueSoon.Count()</span>
+                <span class="stat-sub">?@DueSoon.Sum(s => s.Amount).ToString("N0") will be charged</span>
+            </div>
+        </MudItem>
+    </MudGrid>
+
+    @if (IsFetching)
+    {
+        <div class="d-flex justify-center my-8"><MudProgressCircular Color="Color.Primary" Indeterminate="true" /></div>
+    }
+    else if (!Subs.Any())
+    {
+        <div class="empty-state">
+            <MudIcon Icon="@Icons.Material.Rounded.Subscriptions" Size="Size.Large" Color="Color.Primary" />
+            <MudText Typo="Typo.h6" Class="fw-bold mt-2">No subscriptions tracked</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted mb-4">Add Netflix, Spotify, gym, cloud storage... and never get surprised by a renewal again.</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenNew" Class="rounded-pill">Add a subscription</MudButton>
+        </div>
+    }
+    else
+    {
+        <MudGrid Spacing="4">
+            <MudItem xs="12" md="8">
+                <div class="panel">
+                    <div class="panel-title">All Subscriptions</div>
+                    @foreach (var s in Subs.OrderByDescending(x => x.IsActive).ThenBy(x => x.DaysUntilRenewal))
+                    {
+                        <div class="list-row @(s.IsActive ? "" : "opacity-50")">
+                            <div class="brand-avatar" style="background:@ColorFor(s.Name)">@Initial(s.Name)</div>
+                            <div class="flex-grow-1" style="min-width:0">
+                                <div class="fw-bold text-truncate">@s.Name</div>
+                                <div class="text-muted small">
+                                    @s.Category · @s.BillingCycle
+                                    @if (AccountName(s.AccountId) is string acc) { <span> · @acc</span> }
+                                </div>
+                            </div>
+                            <div class="text-end me-2">
+                                <div class="fw-bold">?@s.Amount.ToString("N0")</div>
+                                @if (s.IsActive && s.UpcomingDate.HasValue)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@(s.DaysUntilRenewal <= 7 ? Color.Error : Color.Default)">
+                                        @RenewalText(s)
+                                    </MudChip>
+                                }
+                                else if (!s.IsActive)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text">Paused</MudChip>
+                                }
+                            </div>
+                            <MudMenu Icon="@Icons.Material.Rounded.MoreVert" Size="Size.Small" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                                <MudMenuItem OnClick="@(() => OpenEdit(s))">Edit</MudMenuItem>
+                                <MudMenuItem OnClick="@(() => ToggleActive(s))">@(s.IsActive ? "Pause / Cancelled" : "Reactivate")</MudMenuItem>
+                                <MudMenuItem OnClick="@(() => Delete(s))">Delete</MudMenuItem>
+                            </MudMenu>
+                        </div>
+                    }
+                </div>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <div class="panel">
+                    <div class="panel-title">By Category</div>
+                    @foreach (var g in Active.GroupBy(s => s.Category).OrderByDescending(g => g.Sum(x => x.MonthlyCost)))
+                    {
+                        var pct = MonthlyTotal > 0 ? (double)(g.Sum(x => x.MonthlyCost) / MonthlyTotal * 100) : 0;
+                        <div class="mb-3">
+                            <div class="d-flex justify-space-between small mb-1">
+                                <span class="fw-bold">@g.Key</span>
+                                <span>?@g.Sum(x => x.MonthlyCost).ToString("N0")/mo</span>
+                            </div>
+                            <MudProgressLinear Value="@pct" Color="Color.Primary" Rounded="true" Size="Size.Small" />
+                        </div>
+                    }
+                    <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Text" Class="mt-4">
+                        Tip: Switching monthly plans to yearly often saves 15–20%.
+                    </MudAlert>
+                </div>
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+<MudDialog @bind-Visible="DialogOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6" Class="fw-bold">@(Editing.Id == null ? "Add Subscription" : "Edit Subscription")</MudText></TitleContent>
+    <DialogContent>
+        <MudAutocomplete T="string" @bind-Value="Editing.Name" Label="Service" SearchFunc="SearchServices" CoerceValue="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+        <MudGrid Spacing="2">
+            <MudItem xs="6">
+                <MudNumericField @bind-Value="Editing.Amount" Label="Amount (?)" Format="N0" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect T="string" @bind-Value="Editing.BillingCycle" Label="Billing" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var c in Cycles) { <MudSelectItem Value="@c">@c</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+        <MudDatePicker @bind-Date="Editing.NextBillingDate" Label="Next billing date" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-3 mb-3" />
+        <MudSelect T="string" @bind-Value="Editing.Category" Label="Category" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3">
+            @foreach (var c in Categories) { <MudSelectItem Value="@c">@c</MudSelectItem> }
+        </MudSelect>
+        <MudSelect T="string" @bind-Value="Editing.AccountId" Label="Charged to (bank/card)" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+            @foreach (var a in Accounts) { <MudSelectItem Value="@a.Id">@a.DisplayName</MudSelectItem> }
+        </MudSelect>
+        @if (!Accounts.Any())
+        {
+            <MudText Typo="Typo.caption" Class="text-muted">Add accounts in the <MudLink Href="/accounts">Accounts</MudLink> page to link payment sources.</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => DialogOpen = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="IsSaving">@(IsSaving ? "Saving..." : "Save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Subscription> Subs = new();
+    private List<BankAccount> Accounts = new();
+    private Subscription Editing = new();
+    private bool DialogOpen, IsSaving, IsFetching = true;
+    private string CurrentUserId = "";
+
+    private static readonly string[] Cycles = { "Weekly", "Monthly", "Quarterly", "Yearly" };
+    private static readonly string[] Categories = { "Entertainment", "Music", "Software", "Cloud Storage", "Fitness", "News", "Food Delivery", "Shopping", "Telecom", "Insurance", "Other" };
+    private static readonly string[] KnownServices =
+    {
+        "Netflix", "Amazon Prime", "Disney+ Hotstar", "JioCinema", "SonyLIV", "Zee5", "YouTube Premium", "Spotify",
+        "Apple Music", "Apple iCloud", "Google One", "Microsoft 365", "ChatGPT Plus", "GitHub Copilot", "Adobe Creative Cloud",
+        "Swiggy One", "Zomato Gold", "Flipkart VIP", "Cult.fit", "Airtel", "Jio", "LinkedIn Premium", "Notion", "Canva Pro"
+    };
+
+    private IEnumerable<Subscription> Active => Subs.Where(s => s.IsActive);
+    private IEnumerable<Subscription> DueSoon => Active.Where(s => s.DaysUntilRenewal <= 7);
+    private decimal MonthlyTotal => Active.Sum(s => s.MonthlyCost);
+    private decimal OpportunityCost
+    {
+        get
+        {
+            double r = 0.12 / 12, n = 120;
+            return (decimal)((double)MonthlyTotal * ((Math.Pow(1 + r, n) - 1) / r));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        CurrentUserId = authState.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value ?? "";
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        if (string.IsNullOrEmpty(CurrentUserId)) { IsFetching = false; return; }
+        try
+        {
+            Subs = (await SupabaseClient.From<Subscription>().Where(x => x.UserId == CurrentUserId).Get()).Models;
+            try { Accounts = (await SupabaseClient.From<BankAccount>().Where(x => x.UserId == CurrentUserId).Get()).Models; } catch { }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error loading subscriptions: {ex.Message}", Severity.Error); }
+        finally { IsFetching = false; }
+    }
+
+    private Task<IEnumerable<string>> SearchServices(string value, CancellationToken _) =>
+        Task.FromResult(string.IsNullOrWhiteSpace(value) ? KnownServices.AsEnumerable() : KnownServices.Where(b => b.Contains(value, StringComparison.OrdinalIgnoreCase)));
+
+    private string? AccountName(string? id) => id == null ? null : Accounts.FirstOrDefault(a => a.Id == id)?.DisplayName;
+
+    private static string RenewalText(Subscription s) => s.DaysUntilRenewal switch
+    {
+        0 => "Renews today",
+        1 => "Renews tomorrow",
+        _ => $"in {s.DaysUntilRenewal} days · {s.UpcomingDate:dd MMM}"
+    };
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[0].ToString().ToUpper();
+
+    private static string ColorFor(string name)
+    {
+        string[] palette = { "#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#6366f1" };
+        var n = (name ?? "").ToLowerInvariant();
+        if (n.Contains("netflix")) return "#e50914";
+        if (n.Contains("spotify")) return "#1db954";
+        if (n.Contains("prime") || n.Contains("amazon")) return "#00a8e1";
+        if (n.Contains("youtube")) return "#ff0000";
+        if (n.Contains("hotstar")) return "#1f80e0";
+        return palette[Math.Abs(n.Sum(c => c)) % palette.Length];
+    }
+
+    private void OpenNew() { Editing = new Subscription(); DialogOpen = true; }
+
+    private void OpenEdit(Subscription s)
+    {
+        Editing = new Subscription { Id = s.Id, UserId = s.UserId, Name = s.Name, Amount = s.Amount, BillingCycle = s.BillingCycle, NextBillingDate = s.NextBillingDate, Category = s.Category, AccountId = s.AccountId, IsActive = s.IsActive };
+        DialogOpen = true;
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(Editing.Name) || Editing.Amount <= 0) { Snackbar.Add("Enter a service name and amount.", Severity.Warning); return; }
+        IsSaving = true;
+        try
+        {
+            Editing.UserId = CurrentUserId;
+            if (Editing.Id == null) await SupabaseClient.From<Subscription>().Insert(Editing);
+            else await SupabaseClient.From<Subscription>().Update(Editing);
+            Snackbar.Add("Subscription saved.", Severity.Success);
+            DialogOpen = false;
+            await Load();
+        }
+        catch (Exception ex) { Snackbar.Add($"Save failed: {ex.Message}", Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    private async Task ToggleActive(Subscription s)
+    {
+        try
+        {
+            s.IsActive = !s.IsActive;
+            await SupabaseClient.From<Subscription>().Update(s);
+        }
+        catch (Exception ex) { s.IsActive = !s.IsActive; Snackbar.Add($"Update failed: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task Delete(Subscription s)
+    {
+        try
+        {
+            await SupabaseClient.From<Subscription>().Where(x => x.Id == s.Id).Delete();
+            Subs.Remove(s);
+            Snackbar.Add($"{s.Name} removed.", Severity.Info);
+        }
+        catch (Exception ex) { Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error); }
+    }
+}

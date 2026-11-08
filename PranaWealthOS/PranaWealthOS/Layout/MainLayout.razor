@@ -1,12 +1,12 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
 @inject Supabase.Client SupabaseClient
-@using MudBlazor
-@using Microsoft.AspNetCore.Components.Authorization
+@inject Blazored.LocalStorage.ILocalStorageService LocalStorage
 @using System.Security.Claims
+@implements IDisposable
 
-<MudThemeProvider Theme="_currentTheme" @bind-IsDarkMode="_isDarkMode" />
+<MudThemeProvider Theme="_theme" @bind-IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
@@ -14,52 +14,64 @@
 <CascadingAuthenticationState>
     <AuthorizeView>
         <Authorized Context="authState">
-            <MudLayout>
-                <MudAppBar Elevation="0" Class="app-bar-glass">
-                    <MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-                    <img src="ArthaOneLogo.png" alt="" style="height:28px;width:28px;border-radius:8px" class="ms-2" />
-                    <MudText Typo="Typo.h6" Class="ms-2 fw-bold brand-text">ArthaOne</MudText>
+            <MudLayout Class="@(_isDarkMode ? "app-dark" : "app-light")">
+                <MudAppBar Elevation="0" Dense="true" Class="topbar">
+                    <MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@(() => _drawerOpen = !_drawerOpen)" Class="d-md-none" />
+                    <div class="topbar-title">@PageName</div>
                     <MudSpacer />
-
-                    <MudToggleIconButton @bind-Toggled="@_isDarkMode"
-                                         Icon="@Icons.Material.Filled.LightMode" Color="Color.Warning"
-                                         ToggledIcon="@Icons.Material.Filled.DarkMode" ToggledColor="Color.Default"
-                                         Title="Toggle Theme" Class="me-4" />
-
-                    <MudTooltip Text="Go to Profile">
-                        <MudIconButton DisableRipple="true" Class="pa-0" OnClick="@(() => Navigation.NavigateTo("/profile"))">
-                            <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small" Style="font-weight: bold; border: 2px solid #e2e8f0;">
-                                @GetUserInitial(authState)
-                            </MudAvatar>
-                        </MudIconButton>
+                    <MudTooltip Text="@(_isDarkMode ? "Light mode" : "Dark mode")">
+                        <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Rounded.LightMode : Icons.Material.Rounded.DarkMode)" Color="Color.Inherit" OnClick="ToggleTheme" />
                     </MudTooltip>
+                    <a href="/profile" class="avatar-btn ms-2" title="Profile">@GetUserInitial(authState)</a>
                 </MudAppBar>
 
-                <MudDrawer @bind-Open="_drawerOpen" Elevation="0" ClipMode="DrawerClipMode.Always" Variant="DrawerVariant.Responsive" Class="app-drawer">
-                    <MudNavMenu Class="mt-4 px-2 modern-nav" Rounded="true" Margin="Margin.Dense" Color="Color.Primary">
-                        <div class="nav-section">Overview</div>
-                        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.SpaceDashboard">Dashboard</MudNavLink>
+                <MudDrawer @bind-Open="_drawerOpen" Elevation="0" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Never" Width="248px" Class="sidebar">
+                    <a href="/" class="sidebar-brand">
+                        <img src="ArthaOneLogo.png" alt="" />
+                        <span>ArthaOne</span>
+                    </a>
 
-                        <div class="nav-section">Money</div>
-                        <MudNavLink Href="/transactions" Icon="@Icons.Material.Rounded.ReceiptLong">Transactions</MudNavLink>
-                        <MudNavLink Href="/accounts" Icon="@Icons.Material.Rounded.AccountBalance">Accounts</MudNavLink>
-                        <MudNavLink Href="/subscriptions" Icon="@Icons.Material.Rounded.Autorenew">Subscriptions</MudNavLink>
-                        <MudNavLink Href="/expenses" Icon="@Icons.Material.Rounded.EventRepeat">Fixed Monthly Costs</MudNavLink>
+                    <nav class="side-nav">
+                        @foreach (var g in Groups)
+                        {
+                            @if (g.Title != null)
+                            {
+                                <div class="side-group">@g.Title</div>
+                            }
+                            @foreach (var l in g.Links)
+                            {
+                                <a href="@l.Href" class="side-link @(l.Matches(CurrentPath) ? "active" : "")">
+                                    <MudIcon Icon="@l.Icon" Size="Size.Small" />
+                                    <span>@l.Text</span>
+                                </a>
+                            }
+                        }
+                    </nav>
 
-                        <div class="nav-section">Wealth</div>
-                        <MudNavLink Href="/investments" Icon="@Icons.Material.Rounded.ShowChart">Investments</MudNavLink>
-                        <MudNavLink Href="/fire-goals" Icon="@Icons.Material.Rounded.LocalFireDepartment">FIRE Strategy</MudNavLink>
-
-                        <div class="nav-section">Account</div>
-                        <MudNavLink Href="/profile" Icon="@Icons.Material.Rounded.Settings">Profile & Settings</MudNavLink>
-                    </MudNavMenu>
+                    <div class="sidebar-foot">
+                        <div class="avatar-btn sm">@GetUserInitial(authState)</div>
+                        <div class="min-w-0 flex-1">
+                            <div class="ellipsis small fw-600">@GetUserEmail(authState)</div>
+                            <a href="/profile" class="small muted-text">Settings</a>
+                        </div>
+                    </div>
                 </MudDrawer>
 
-                <MudMainContent Style="min-height: 100vh;">
-                    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pt-4 pb-8">
+                <MudMainContent Class="main-area">
+                    <div class="main-inner page-enter" @key="CurrentPath">
                         @Body
-                    </MudContainer>
+                    </div>
                 </MudMainContent>
+
+                <nav class="bottom-nav">
+                    @foreach (var l in MobileLinks)
+                    {
+                        <a href="@l.Href" class="bottom-link @(l.Matches(CurrentPath) ? "active" : "")">
+                            <MudIcon Icon="@l.Icon" Size="Size.Small" />
+                            <span>@l.Text</span>
+                        </a>
+                    }
+                </nav>
             </MudLayout>
         </Authorized>
 
@@ -72,67 +84,125 @@
 </CascadingAuthenticationState>
 
 @code {
-    bool _drawerOpen = true;
+    private record Link(string Href, string Text, string Icon, string[]? Also = null)
+    {
+        public bool Matches(string path) => Href == "/" ? path == "/" : path.StartsWith(Href) || (Also?.Any(a => path.StartsWith(a)) ?? false);
+    }
+    private record Group(string? Title, Link[] Links);
 
-    // Defaulting to Dark Mode! No complex system checks needed.
+    private static readonly Group[] Groups =
+    {
+        new(null, new[] { new Link("/", "Dashboard", Icons.Material.Rounded.SpaceDashboard) }),
+        new("Money", new[]
+        {
+            new Link("/transactions", "Income & Expenses", Icons.Material.Rounded.SwapVert, new[] { "/recurring", "/subscriptions" }),
+            new Link("/accounts", "Banks & Cards", Icons.Material.Rounded.AccountBalance),
+        }),
+        new("Wealth", new[]
+        {
+            new Link("/investments", "Investments", Icons.Material.Rounded.ShowChart),
+            new Link("/fire-goals", "FIRE Plan", Icons.Material.Rounded.LocalFireDepartment),
+        }),
+        new("Account", new[] { new Link("/profile", "Profile & Settings", Icons.Material.Rounded.Settings) }),
+    };
+
+    private static readonly Link[] MobileLinks =
+    {
+        new("/", "Home", Icons.Material.Rounded.SpaceDashboard),
+        new("/transactions", "Money", Icons.Material.Rounded.SwapVert, new[] { "/recurring", "/subscriptions" }),
+        new("/accounts", "Banks", Icons.Material.Rounded.AccountBalance),
+        new("/investments", "Invest", Icons.Material.Rounded.ShowChart),
+        new("/fire-goals", "FIRE", Icons.Material.Rounded.LocalFireDepartment),
+    };
+
+    private bool _drawerOpen = true;
     private bool _isDarkMode = true;
 
-    void DrawerToggle() => _drawerOpen = !_drawerOpen;
+    private string CurrentPath => "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/');
 
-    private string GetUserEmail(AuthenticationState context)
+    private string PageName => Groups.SelectMany(g => g.Links).FirstOrDefault(l => l.Matches(CurrentPath))?.Text ?? "ArthaOne";
+
+    private async Task ToggleTheme()
     {
-        return context.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value ?? "User";
+        _isDarkMode = !_isDarkMode;
+        try { await LocalStorage.SetItemAsync("darkMode", _isDarkMode); } catch { }
     }
 
-    private string GetUserInitial(AuthenticationState context)
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => StateHasChanged();
+
+    private static string GetUserEmail(AuthenticationState context) =>
+        context.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value ?? "User";
+
+    private static string GetUserInitial(AuthenticationState context)
     {
         var email = GetUserEmail(context);
-        return string.IsNullOrEmpty(email) || email == "User" ? "U" : email[0].ToString().ToUpper();
+        return string.IsNullOrEmpty(email) || email == "User" ? "U" : char.ToUpperInvariant(email[0]).ToString();
     }
 
-    // Custom Theme with Dark Mode Palette
-    MudTheme _currentTheme = new MudTheme()
+    private readonly MudTheme _theme = new()
     {
-        PaletteLight = new PaletteLight()
+        PaletteLight = new PaletteLight
         {
             Primary = "#4f46e5",
-            Secondary = "#f59e0b",
-            AppbarBackground = "#ffffff",
-            AppbarText = "#1f2937",
-            Background = "#f8fafc",
+            Secondary = "#0ea5e9",
+            Tertiary = "#10b981",
+            AppbarBackground = "#f6f7fb",
+            AppbarText = "#0f172a",
+            Background = "#f6f7fb",
             Surface = "#ffffff",
-            TextPrimary = "#111827",
-            TextSecondary = "#4b5563",
-            Success = "#10b981",
-            Warning = "#f59e0b",
-            Error = "#ef4444"
+            DrawerBackground = "#ffffff",
+            DrawerText = "#334155",
+            DrawerIcon = "#64748b",
+            TextPrimary = "#0f172a",
+            TextSecondary = "#64748b",
+            LinesDefault = "#e8eaf1",
+            LinesInputs = "#d5d9e4",
+            Divider = "#e8eaf1",
+            Success = "#059669",
+            Warning = "#d97706",
+            Error = "#dc2626",
+            Info = "#0284c7"
         },
-        PaletteDark = new PaletteDark()
+        PaletteDark = new PaletteDark
         {
-            Primary = "#818cf8",
-            Secondary = "#f59e0b",
-            AppbarBackground = "#0b1120",
-            AppbarText = "#f9fafb",
-            Background = "#0b1120",
-            Surface = "#111a2e",
-            LinesDefault = "#1f2a44",
-            TextPrimary = "#f9fafb",
-            TextSecondary = "#94a3b8",
-            Success = "#10b981",
-            Warning = "#f59e0b",
-            Error = "#ef4444",
-            DrawerBackground = "#0b1120"
+            Primary = "#8b8cf8",
+            Secondary = "#38bdf8",
+            Tertiary = "#34d399",
+            AppbarBackground = "#0e1117",
+            AppbarText = "#e6e8ee",
+            Background = "#0e1117",
+            Surface = "#161a23",
+            DrawerBackground = "#12151d",
+            DrawerText = "#c9cdd8",
+            DrawerIcon = "#8a90a2",
+            TextPrimary = "#e6e8ee",
+            TextSecondary = "#8a90a2",
+            LinesDefault = "#242a36",
+            LinesInputs = "#2f3644",
+            Divider = "#242a36",
+            Success = "#34d399",
+            Warning = "#fbbf24",
+            Error = "#f87171",
+            Info = "#38bdf8"
         },
-        LayoutProperties = new LayoutProperties() { DefaultBorderRadius = "12px" },
-        Typography = new Typography()
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "10px", AppbarHeight = "60px" },
+        Typography = new Typography
         {
-            Default = new DefaultTypography() { FontFamily = new[] { "Inter", "Helvetica", "Arial", "sans-serif" } },
-            Button = new ButtonTypography() { FontFamily = new[] { "Inter", "sans-serif" }, TextTransform = "none", FontWeight = "600" }
+            Default = new DefaultTypography { FontFamily = new[] { "Inter", "Segoe UI", "Helvetica", "Arial", "sans-serif" } },
+            Button = new ButtonTypography { FontFamily = new[] { "Inter", "sans-serif" }, TextTransform = "none", FontWeight = "600" }
         }
     };
 
     protected override async Task OnInitializedAsync()
     {
+        Navigation.LocationChanged += OnLocationChanged;
+        try
+        {
+            if (await LocalStorage.ContainKeyAsync("darkMode"))
+                _isDarkMode = await LocalStorage.GetItemAsync<bool>("darkMode");
+        }
+        catch { }
+
         var uriString = Navigation.Uri;
         if (uriString.Contains("access_token") || uriString.Contains("code="))
         {
@@ -141,9 +211,9 @@
         }
 
         var authState = await AuthProvider.GetAuthenticationStateAsync();
-        if (authState.User.Identity == null || !authState.User.Identity.IsAuthenticated)
-        {
+        if (authState.User.Identity is not { IsAuthenticated: true })
             Navigation.NavigateTo("/login");
-        }
     }
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
 }

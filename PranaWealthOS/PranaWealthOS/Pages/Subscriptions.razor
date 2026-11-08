@@ -1,4 +1,4 @@
-@page "/subscriptions"
+﻿@page "/subscriptions"
 @inject Supabase.Client SupabaseClient
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
@@ -10,34 +10,32 @@
 <PageTitle>ArthaOne - Subscriptions</PageTitle>
 
 <div class="page-wrap">
-    <div class="page-header">
-        <div>
-            <h2 class="page-title"><MudIcon Icon="@Icons.Material.Rounded.Autorenew" /> Subscriptions</h2>
-            <MudText Typo="Typo.body2" Class="text-muted">Track recurring charges, see what renews next and spot what to cancel.</MudText>
-        </div>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNew" Class="rounded-pill px-5">Add Subscription</MudButton>
-    </div>
+    <MoneyTabs Subtitle="Netflix, Spotify, cloud storage: see what renews next and spot what to cancel.">
+        <Actions>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="OpenNew" Class="btn-pill">Add subscription</MudButton>
+        </Actions>
+    </MoneyTabs>
 
     <MudGrid Spacing="4" Class="mb-6">
         <MudItem xs="12" sm="4">
             <div class="stat-card">
                 <span class="stat-label">Monthly Cost</span>
-                <span class="stat-value text-primary">?@MonthlyTotal.ToString("N0")</span>
+                <span class="stat-value text-primary">₹@MonthlyTotal.ToString("N0")</span>
                 <span class="stat-sub">@Active.Count() active subscriptions</span>
             </div>
         </MudItem>
         <MudItem xs="12" sm="4">
             <div class="stat-card">
                 <span class="stat-label">Yearly Cost</span>
-                <span class="stat-value text-warning">?@((MonthlyTotal * 12).ToString("N0"))</span>
-                <span class="stat-sub">Invested at 12% for 10 yrs ? ?@OpportunityCost.ToString("N0")</span>
+                <span class="stat-value text-warning">₹@((MonthlyTotal * 12).ToString("N0"))</span>
+                <span class="stat-sub">Invested at 12% for 10 yrs = ₹@OpportunityCost.ToString("N0")</span>
             </div>
         </MudItem>
         <MudItem xs="12" sm="4">
             <div class="stat-card">
                 <span class="stat-label">Renewing in 7 days</span>
                 <span class="stat-value text-error">@DueSoon.Count()</span>
-                <span class="stat-sub">?@DueSoon.Sum(s => s.Amount).ToString("N0") will be charged</span>
+                <span class="stat-sub">₹@DueSoon.Sum(s => s.Amount).ToString("N0") will be charged</span>
             </div>
         </MudItem>
     </MudGrid>
@@ -68,12 +66,12 @@
                             <div class="flex-grow-1" style="min-width:0">
                                 <div class="fw-bold text-truncate">@s.Name</div>
                                 <div class="text-muted small">
-                                    @s.Category � @s.BillingCycle
-                                    @if (AccountName(s.AccountId) is string acc) { <span> � @acc</span> }
+                                    @s.Category · @s.BillingCycle
+                                    @if (AccountName(s.AccountId) is string acc) { <span> · @acc</span> }
                                 </div>
                             </div>
                             <div class="text-end me-2">
-                                <div class="fw-bold">?@s.Amount.ToString("N0")</div>
+                                <div class="fw-bold">₹@s.Amount.ToString("N0")</div>
                                 @if (s.IsActive && s.UpcomingDate.HasValue)
                                 {
                                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@(s.DaysUntilRenewal <= 7 ? Color.Error : Color.Default)">
@@ -103,13 +101,13 @@
                         <div class="mb-3">
                             <div class="d-flex justify-space-between small mb-1">
                                 <span class="fw-bold">@g.Key</span>
-                                <span>?@g.Sum(x => x.MonthlyCost).ToString("N0")/mo</span>
+                                <span>₹@g.Sum(x => x.MonthlyCost).ToString("N0")/mo</span>
                             </div>
                             <MudProgressLinear Value="@pct" Color="Color.Primary" Rounded="true" Size="Size.Small" />
                         </div>
                     }
                     <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Text" Class="mt-4">
-                        Tip: Switching monthly plans to yearly often saves 15�20%.
+                        Tip: Switching monthly plans to yearly often saves 15–20%.
                     </MudAlert>
                 </div>
             </MudItem>
@@ -205,7 +203,7 @@
     {
         0 => "Renews today",
         1 => "Renews tomorrow",
-        _ => $"in {s.DaysUntilRenewal} days � {s.UpcomingDate:dd MMM}"
+        _ => $"in {s.DaysUntilRenewal} days · {s.UpcomingDate:dd MMM}"
     };
 
     private static string Initial(string name) => string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[0].ToString().ToUpper();

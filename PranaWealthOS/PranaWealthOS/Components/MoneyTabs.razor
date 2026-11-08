@@ -1,0 +1,45 @@
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="money-hub">
+    <div class="money-hub-head">
+        <div>
+            <h1 class="page-title">Income &amp; Expenses</h1>
+            <p class="page-subtitle">@Subtitle</p>
+        </div>
+        @if (Actions != null)
+        {
+            <div class="page-actions">@Actions</div>
+        }
+    </div>
+    <nav class="hub-tabs" role="tablist">
+        @foreach (var t in Tabs)
+        {
+            var active = IsActive(t.Href);
+            <a href="@t.Href" role="tab" aria-selected="@(active ? "true" : "false")" class="hub-tab @(active ? "active" : "")">
+                <MudIcon Icon="@t.Icon" Size="Size.Small" />
+                <span>@t.Text</span>
+            </a>
+        }
+    </nav>
+</div>
+
+@code {
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    private record Tab(string Href, string Text, string Icon);
+    private static readonly Tab[] Tabs =
+    {
+        new("/transactions", "Transactions", Icons.Material.Rounded.ReceiptLong),
+        new("/recurring", "Recurring", Icons.Material.Rounded.EventRepeat),
+        new("/subscriptions", "Subscriptions", Icons.Material.Rounded.Autorenew),
+    };
+
+    private bool IsActive(string href) =>
+        ("/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0]).StartsWith(href, StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized() => Nav.LocationChanged += OnLoc;
+    private void OnLoc(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+    public void Dispose() => Nav.LocationChanged -= OnLoc;
+}

@@ -1,0 +1,14 @@
+@* Skeleton placeholder shown while data loads *@
+<div class="skeleton-wrap">
+    <div class="sk-grid">
+        @for (int i = 0; i < Cards; i++)
+        {
+            <div class="sk sk-card"></div>
+        }
+    </div>
+    <div class="sk sk-block mt-4"></div>
+</div>
+
+@code {
+    [Parameter] public int Cards { get; set; } = 4;
+}

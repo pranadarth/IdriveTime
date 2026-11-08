@@ -92,14 +92,15 @@ namespace PranaWealthOS.Services
 
                 if (debit == 0 && credit == 0) continue;
                 bool income = credit > 0 && debit == 0;
+                var kind = Categories.GuessKind(desc, income);
 
                 result.Add(new Transaction
                 {
                     TxnDate = date,
                     Description = desc.Length > 200 ? desc[..200] : desc,
                     Amount = income ? credit : debit,
-                    TxnType = income ? "Income" : "Expense",
-                    Category = Categories.AutoCategorize(desc, income),
+                    TxnType = kind,
+                    Category = kind == "Investment" ? Categories.AutoCategorizeInvestment(desc) : Categories.AutoCategorize(desc, income),
                     PaymentMode = GuessMode(desc)
                 });
             }
@@ -154,7 +155,7 @@ namespace PranaWealthOS.Services
         {
             if (o is double d) return (decimal)d;
             if (o is decimal m) return m;
-            var s = (o?.ToString() ?? "").Replace(",", "").Replace("?", "").Replace("INR", "", StringComparison.OrdinalIgnoreCase)
+            var s = (o?.ToString() ?? "").Replace(",", "").Replace("\u20B9", "").Replace("INR", "", StringComparison.OrdinalIgnoreCase)
                 .Replace("Cr", "", StringComparison.OrdinalIgnoreCase).Replace("Dr", "", StringComparison.OrdinalIgnoreCase).Trim();
             bool neg = s.StartsWith("(") && s.EndsWith(")");
             s = s.Trim('(', ')');
@@ -210,7 +211,7 @@ namespace PranaWealthOS.Services
             {
                 sb.AppendLine(string.Join(',',
                     t.TxnDate.ToString("yyyy-MM-dd"), Esc(t.Description), t.TxnType, Esc(t.Category),
-                    (t.IsExpense ? -t.Amount : t.Amount).ToString(CultureInfo.InvariantCulture),
+                    (t.IsIncome ? t.Amount : -t.Amount).ToString(System.Globalization.CultureInfo.InvariantCulture),
                     Esc(t.PaymentMode), Esc(accountName(t.AccountId)), Esc(t.Notes)));
             }
             return sb.ToString();

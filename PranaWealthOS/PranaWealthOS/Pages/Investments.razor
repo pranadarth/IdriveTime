@@ -8,31 +8,27 @@
 @using PranaWealthOS.Models
 @using MudBlazor
 @inject ISnackbar Snackbar
+@inject WealthEngine Engine
 
-<PageTitle>Investment Portfolio</PageTitle>
+<PageTitle>Investments - ArthaOne</PageTitle>
 
-<div class="container-fluid mt-4" style="font-family: 'Inter', sans-serif; max-width: 1400px;">
-    <div class="d-flex flex-wrap justify-space-between align-center mb-6 gap-4">
-        <div>
-            <h2 class="text-success m-0 fw-bold d-flex align-center gap-2">
-                <MudIcon Icon="@Icons.Material.Filled.Insights" Size="Size.Large" /> Investment Engine
-            </h2>
-            <MudText Typo="Typo.body2" Class="text-muted mt-1">Manage all assets, categorize holdings, and view deep analytics.</MudText>
-        </div>
-        <MudPaper Elevation="0" Class="pa-3 mud-theme-surface rounded-lg border">
-            <MudText Typo="Typo.h5" Color="Color.Primary" Class="fw-bold m-0">
-                Total Wealth: ₹@TotalNetWorth.ToString("N0")
-            </MudText>
-        </MudPaper>
-    </div>
+<div class="page-wrap">
+    <PageHeader Title="Investments" Subtitle="All your holdings in one place: stocks, mutual funds, EPF, FDs, RDs and more.">
+        <Actions>
+            <div class="stat-card glass-tile" style="--tone:#6366f1;padding:12px 18px !important">
+                <span class="stat-label">Total wealth</span>
+                <span class="stat-value" style="font-size:1.35rem">@Fmt.Inr(TotalNetWorth)</span>
+            </div>
+        </Actions>
+    </PageHeader>
 
-    <MudTabs @bind-ActivePanelIndex="activeTabIndex" KeepPanelsAlive="false" Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4" HeaderClass="mb-6" SliderColor="Color.Primary" Position="Position.Top">
+<MudTabs @bind-ActivePanelIndex="activeTabIndex" KeepPanelsAlive="false" Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4" HeaderClass="mb-6" SliderColor="Color.Primary" Position="Position.Top">
         <MudTabPanel Text="Analytics" Icon="@Icons.Material.Filled.Insights">
             <div class="pt-6">
                 <MudGrid Spacing="4">
 
                 <MudItem xs="12" md="4">
-                    <MudPaper Class="pa-6 h-100" Elevation="0" Outlined="true" Style="border-left: 5px solid #594ae2;">
+                    <MudPaper Class="glass-tile pa-6 h-100" Elevation="0" Outlined="true" Style="--tone:#8b5cf6">
                         <MudText Typo="Typo.h6" Class="fw-bold mb-2">True CAGR (XIRR) Estimator</MudText>
                         <MudText Typo="Typo.body2" Class="text-muted mb-4">Input your average portfolio age to calculate real historical compounding.</MudText>
 
@@ -134,27 +130,25 @@
             <div class="pt-6">
                  <MudGrid Spacing="6">
                 <MudItem xs="12" md="6">
-                    <MudPaper Class="pa-4 h-100" Elevation="0" Outlined="true">
-                        <div class="d-flex flex-wrap justify-space-between align-center mb-4 gap-4">
-                            <MudText Typo="Typo.h6" Class="fw-bold">Mutual Funds (<span class="text-success">₹@MFs.Sum(m => m.CurrentValue).ToString("N0")</span>)</MudText>
-                            <MudTextField @bind-Value="searchStringMFs" Placeholder="Search..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width: 200px;" />
+                    <div class="panel tone-emerald h-100">
+                        <div class="panel-head">
+                            <div class="panel-title m-0"><span class="title-icon"><MudIcon Icon="@Icons.Material.Rounded.PieChart" Size="Size.Small" /></span>Mutual funds <span class="amount-badge">@Fmt.Inr(MFs.Sum(m => m.CurrentValue))</span></div>
+                            <MudTextField @bind-Value="searchStringMFs" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" DebounceInterval="250" Class="search-glass" />
                         </div>
                         <MudTable Items="@MFs" Dense="true" Hover="true" Elevation="0" Filter="new Func<MutualFundHolding, bool>(FilterMFs)">
                             <HeaderContent>
-                                <MudTh>Scheme Name</MudTh>
+                                <MudTh>Fund</MudTh>
                                 <MudTh>Category</MudTh>
-                                <MudTh>Exclude (Temp)</MudTh>
+                                <MudTh Style="text-align:center"><MudTooltip Text="Money kept aside for a near-term goal. Excluded from FIRE and allocation.">Short-term</MudTooltip></MudTh>
                                 <MudTh Style="text-align: right;">Value</MudTh>
                             </HeaderContent>
                             <RowTemplate>
-                                <MudTd Class="small">
-                                    @if (context.IsShortTermGoal)
+                                <MudTd>
+                                    <div class="holding-name @(context.IsShortTermGoal ? "struck" : "")" title="@context.SchemeName">@context.SchemeName</div>
+                                    @if (context.InvestedValue > 0)
                                     {
-                                        <span style="text-decoration: line-through; opacity: 0.5;">@context.SchemeName</span>
-                                    }
-                                    else
-                                    {
-                                        <span>@context.SchemeName</span>
+                                        var pl = context.CurrentValue - context.InvestedValue;
+                                        <div class="holding-pl @(pl >= 0 ? "pos" : "neg")">@Fmt.Signed(pl) (@Fmt.Pct(Fmt.Ratio(pl, context.InvestedValue), 1))</div>
                                     }
                                 </MudTd>
                                 <MudTd>
@@ -168,38 +162,36 @@
                                         <MudSelectItem T="string" Value="@("Uncategorized")">Uncategorized</MudSelectItem>
                                     </MudSelect>
                                 </MudTd>
-                                <MudTd>
+                                <MudTd Style="text-align:center">
                                     <MudCheckBox @bind-Value="context.IsShortTermGoal" @bind-Value:after="SaveDataAsync" Color="Color.Error" Size="Size.Small" />
                                 </MudTd>
-                                <MudTd Style="text-align: right;" Class="fw-bold">₹@context.CurrentValue.ToString("N0")</MudTd>
+                                <MudTd Class="num row-amount">@Fmt.Inr(context.CurrentValue)</MudTd>
                             </RowTemplate>
-                            <PagerContent><MudTablePager /></PagerContent>
+                            <PagerContent><MudTablePager HideRowsPerPage="true" /></PagerContent>
                         </MudTable>
-                    </MudPaper>
+                    </div>
                 </MudItem>
 
                 <MudItem xs="12" md="6">
-                    <MudPaper Class="pa-4 h-100" Elevation="0" Outlined="true">
-                        <div class="d-flex flex-wrap justify-space-between align-center mb-4 gap-4">
-                            <MudText Typo="Typo.h6" Class="fw-bold">Direct Equity (<span class="text-primary">₹@Stocks.Sum(s => s.ClosingValue).ToString("N0")</span>)</MudText>
-                            <MudTextField @bind-Value="searchStringStocks" Placeholder="Search..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense" Variant="Variant.Outlined" Style="width: 200px;" />
+                    <div class="panel tone-sky h-100">
+                        <div class="panel-head">
+                            <div class="panel-title m-0"><span class="title-icon"><MudIcon Icon="@Icons.Material.Rounded.CandlestickChart" Size="Size.Small" /></span>Stocks <span class="amount-badge">@Fmt.Inr(Stocks.Sum(s => s.ClosingValue))</span></div>
+                            <MudTextField @bind-Value="searchStringStocks" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Margin="Margin.Dense" Variant="Variant.Outlined" Immediate="true" DebounceInterval="250" Class="search-glass" />
                         </div>
                         <MudTable Items="@Stocks" Dense="true" Hover="true" Elevation="0" Filter="new Func<StockHolding, bool>(FilterStocks)">
                             <HeaderContent>
-                                <MudTh>Stock Name</MudTh>
+                                <MudTh>Stock</MudTh>
                                 <MudTh>Sector</MudTh>
-                                <MudTh>Exclude (Temp)</MudTh>
+                                <MudTh Style="text-align:center"><MudTooltip Text="Money kept aside for a near-term goal. Excluded from FIRE and allocation.">Short-term</MudTooltip></MudTh>
                                 <MudTh Style="text-align: right;">Value</MudTh>
                             </HeaderContent>
                             <RowTemplate>
-                                <MudTd Class="small">
-                                    @if (context.IsShortTermGoal)
+                                <MudTd>
+                                    <div class="holding-name @(context.IsShortTermGoal ? "struck" : "")" title="@context.StockName">@TitleCase(context.StockName)</div>
+                                    @if (context.InvestedValue > 0)
                                     {
-                                        <span style="text-decoration: line-through; opacity: 0.5;">@context.StockName</span>
-                                    }
-                                    else
-                                    {
-                                        <span>@context.StockName</span>
+                                        var pl = context.ClosingValue - context.InvestedValue;
+                                        <div class="holding-pl @(pl >= 0 ? "pos" : "neg")">@Fmt.Signed(pl) (@Fmt.Pct(Fmt.Ratio(pl, context.InvestedValue), 1))</div>
                                     }
                                 </MudTd>
                                 <MudTd>
@@ -213,14 +205,14 @@
                                         <MudSelectItem T="string" Value="@("Uncategorized")">Uncategorized</MudSelectItem>
                                     </MudSelect>
                                 </MudTd>
-                                <MudTd>
+                                <MudTd Style="text-align:center">
                                     <MudCheckBox @bind-Value="context.IsShortTermGoal" @bind-Value:after="SaveDataAsync" Color="Color.Error" Size="Size.Small" />
                                 </MudTd>
-                                <MudTd Style="text-align: right;" Class="fw-bold">₹@context.ClosingValue.ToString("N0")</MudTd>
+                                <MudTd Class="num row-amount">@Fmt.Inr(context.ClosingValue)</MudTd>
                             </RowTemplate>
-                            <PagerContent><MudTablePager /></PagerContent>
+                            <PagerContent><MudTablePager HideRowsPerPage="true" /></PagerContent>
                         </MudTable>
-                    </MudPaper>
+                    </div>
                 </MudItem>
             </MudGrid>
             </div>
@@ -231,14 +223,14 @@
                 <MudText Typo="Typo.h6" Class="fw-bold mb-4">1. Market Linked Assets (Uploads)</MudText>
                 <MudGrid Class="mb-8" Spacing="4">
                     <MudItem xs="12" md="6">
-                        <MudPaper Class="pa-6 text-center h-100 d-flex flex-column justify-center align-center" Outlined="true" Style="border-color: rgba(59, 130, 246, 0.5); background-color: rgba(59, 130, 246, 0.1);">
+                        <MudPaper Class="glass-tile pa-6 text-center h-100 d-flex flex-column justify-center align-center" Outlined="true" Style="--tone:#0ea5e9">
                             <MudIcon Icon="@Icons.Material.Filled.ShowChart" Color="Color.Primary" Size="Size.Large" Class="mb-3" />
                             <MudText Typo="Typo.h6" Class="fw-bold mb-1">Update Stocks</MudText>
                             <InputFile OnChange="HandleStockUpload" class="form-control mt-3" accept=".xlsx" style="max-width:300px;" />
                         </MudPaper>
                     </MudItem>
                     <MudItem xs="12" md="6">
-                        <MudPaper Class="pa-6 text-center h-100 d-flex flex-column justify-center align-center" Outlined="true" Style="border-color: rgba(16, 185, 129, 0.5); background-color: rgba(16, 185, 129, 0.1);">
+                        <MudPaper Class="glass-tile pa-6 text-center h-100 d-flex flex-column justify-center align-center" Outlined="true" Style="--tone:#10b981">
                             <MudIcon Icon="@Icons.Material.Filled.PieChart" Color="Color.Success" Size="Size.Large" Class="mb-3" />
                             <MudText Typo="Typo.h6" Class="fw-bold mb-1">Update Mutual Funds</MudText>
                             <InputFile OnChange="HandleMFUpload" class="form-control mt-3" accept=".xlsx" style="max-width:300px;" />
@@ -367,6 +359,9 @@
 </div>
 
 @code {
+    private static string TitleCase(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? "" : System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(s.ToLowerInvariant());
+
     private string CurrentUserId = "";
     private int activeTabIndex = 0;
 
@@ -458,6 +453,7 @@
     private async Task SaveDataAsync()
     {
         if (string.IsNullOrEmpty(CurrentUserId)) return;
+        Engine.Invalidate();
 
         try
         {
@@ -528,7 +524,7 @@
         if (TempRD.CurrentValue > 0)
         {
             var rdAsset = new AssetModel { UserId = CurrentUserId, AssetType = "RD", Name = "Recurring Deposit", CurrentValue = TempRD.CurrentValue, MonthlyContribution = TempRD.MonthlyInvestment, InterestRate = TempRD.InterestRate, MonthsDuration = TempRD.MonthsLeft };
-            await SupabaseClient.From<AssetModel>().Insert(rdAsset);
+            await SupabaseClient.From<AssetModel>().Insert(rdAsset); Engine.Invalidate();
             TempRD = new();
             await LoadAssetsFromCloud();
         }
@@ -539,7 +535,7 @@
         if (TempFD.Principal > 0)
         {
             var fdAsset = new AssetModel { UserId = CurrentUserId, AssetType = "FD", Name = TempFD.IsBond ? "Govt/Corp Bond" : "Fixed Deposit", InvestedValue = TempFD.Principal, CurrentValue = TempFD.Principal, InterestRate = TempFD.InterestRate, MonthsDuration = TempFD.MonthsDuration, IsBond = TempFD.IsBond };
-            await SupabaseClient.From<AssetModel>().Insert(fdAsset);
+            await SupabaseClient.From<AssetModel>().Insert(fdAsset); Engine.Invalidate();
             TempFD = new();
             await LoadAssetsFromCloud();
         }
@@ -599,7 +595,7 @@
         }
 
         await SupabaseClient.From<AssetModel>().Where(x => x.UserId == CurrentUserId && x.AssetType == "Stock").Delete();
-        await SupabaseClient.From<AssetModel>().Insert(newGrouped);
+        await SupabaseClient.From<AssetModel>().Insert(newGrouped); Engine.Invalidate();
 
         await LoadAssetsFromCloud();
     }
@@ -641,7 +637,7 @@
         }
 
         await SupabaseClient.From<AssetModel>().Where(x => x.UserId == CurrentUserId && x.AssetType == "MF").Delete();
-        await SupabaseClient.From<AssetModel>().Insert(newGrouped);
+        await SupabaseClient.From<AssetModel>().Insert(newGrouped); Engine.Invalidate();
 
         await LoadAssetsFromCloud();
     }

@@ -35,6 +35,7 @@ var options = new SupabaseOptions
 
 // Register Supabase as a Singleton so the entire app can access it
 builder.Services.AddSingleton(provider => new Supabase.Client(url, key, options));
+builder.Services.AddSingleton<PranaWealthOS.Services.WealthEngine>();
 // ------------------------------------
 
 // Build the app
@@ -48,11 +49,8 @@ await supabaseClient.InitializeAsync();
 await host.RunAsync();
 
 /*
-Deployment Instructions:
-dotnet publish -c Release
-netlify deploy --prod --dir=wwwroot/dist -m "Fixed tab bar alignment and added floating button"
-or 
-upload: 
-1. run the cmd: dotnet publish -c Release
-2. copy past the folder, Exact Path: bin \ Release \ net8.0 \ publish \ wwwroot
+Deployment (run from the PranaWealthOS project folder):
+  dotnet publish -c Release -o publish_out
+  netlify deploy --prod --dir=publish_out/wwwroot -m "what changed"
+  Remove-Item -Recurse -Force publish_out
 */

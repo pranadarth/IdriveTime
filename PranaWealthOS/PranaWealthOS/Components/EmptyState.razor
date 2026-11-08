@@ -1,0 +1,16 @@
+<div class="empty-state">
+    <div class="empty-icon"><MudIcon Icon="@Icon" /></div>
+    <div class="empty-title">@Title</div>
+    @if (!string.IsNullOrEmpty(Text))
+    {
+        <div class="empty-text">@Text</div>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = Icons.Material.Rounded.Inbox;
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

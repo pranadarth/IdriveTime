@@ -1,0 +1,276 @@
+@page "/recurring"
+@inject WealthEngine Engine
+@inject Supabase.Client Db
+@inject ISnackbar Snackbar
+
+<PageTitle>Recurring | ArthaOne</PageTitle>
+
+<div class="page-wrap">
+    <MoneyTabs Subtitle="Salary, rent, EMIs, SIPs: set once and they repeat every month until you change or stop them.">
+        <Actions>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="@(() => OpenNew(Tab))" Class="btn-pill">Add recurring</MudButton>
+        </Actions>
+    </MoneyTabs>
+
+    @if (Snap == null)
+    {
+        <LoadingSkeleton Cards="3" />
+    }
+    else
+    {
+        var m = Fmt.ThisMonth;
+        var income = Snap.RecurringMonthly(TxnKinds.Income, m);
+        var expense = Snap.RecurringMonthly(TxnKinds.Expense, m);
+        var invest = Snap.RecurringMonthly(TxnKinds.Investment, m) + Snap.EpfMonthly + Snap.RdMonthly;
+        var free = income - expense - invest - Snap.SubscriptionsMonthly;
+
+        <div class="stat-grid mb-5">
+            <StatCard Label="Monthly income" Value="@Fmt.Inr(income)" Icon="@Icons.Material.Rounded.SouthWest" Tone="#10b981" OnClick="@(() => Tab = TxnKinds.Income)" />
+            <StatCard Label="Fixed expenses" Value="@Fmt.Inr(expense)" Icon="@Icons.Material.Rounded.NorthEast" Tone="#ef4444" OnClick="@(() => Tab = TxnKinds.Expense)">
+                <Sub>@Fmt.Inr(Snap.RecurringMonthly(TxnKinds.Expense, m, true)) essential</Sub>
+            </StatCard>
+            <StatCard Label="Investing" Value="@Fmt.Inr(invest)" Icon="@Icons.Material.Rounded.TrendingUp" Tone="#6366f1" OnClick="@(() => Tab = TxnKinds.Investment)">
+                <Sub>@(income > 0 ? Fmt.Pct(Fmt.Ratio(invest, income)) + " of income" : "incl. EPF & RD")</Sub>
+            </StatCard>
+            <StatCard Label="Left to spend" Value="@Fmt.Inr(free)" Icon="@Icons.Material.Rounded.Wallet" Tone="#f59e0b" ValueColor="@(free < 0 ? "var(--mud-palette-error)" : null)">
+                <Sub>after fixed costs, SIPs &amp; subscriptions</Sub>
+            </StatCard>
+        </div>
+
+        <div class="panel">
+            <div class="seg mb-4">
+                @foreach (var k in TxnKinds.All)
+                {
+                    <button class="seg-btn @(Tab == k ? "active" : "")" @onclick="@(() => Tab = k)">
+                        @Label(k) <span class="seg-count">@Snap.Recurring.Count(r => r.Kind == k && r.IsActiveIn(m))</span>
+                    </button>
+                }
+            </div>
+
+            @{
+                var items = Snap.Recurring.Where(r => r.Kind == Tab).OrderByDescending(r => r.IsActiveIn(m)).ThenByDescending(r => r.MonthlyEquivalent).ToList();
+            }
+            @if (Tab == TxnKinds.Investment && (Snap.EpfMonthly > 0 || Snap.RdMonthly > 0))
+            {
+                <div class="hint mb-3">
+                    <MudIcon Icon="@Icons.Material.Rounded.Info" Size="Size.Small" />
+                    EPF (@Fmt.Inr(Snap.EpfMonthly)/mo) and RDs (@Fmt.Inr(Snap.RdMonthly)/mo) are counted automatically from <a href="/investments">Investments</a>.
+                </div>
+            }
+
+            @if (!items.Any())
+            {
+                <EmptyState Icon="@IconFor(Tab)" Title="@($"No recurring {Label(Tab).ToLower()} yet")" Text="@EmptyText(Tab)">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => OpenNew(Tab))" Class="btn-pill mt-2">Add @Label(Tab).ToLower()</MudButton>
+                </EmptyState>
+            }
+            else
+            {
+                @foreach (var r in items)
+                {
+                    var cat = Categories.Get(r.Category);
+                    var active = r.IsActiveIn(m);
+                    var next = r.NextDate(DateTime.Today);
+                    <div class="list-row @(active ? "" : "muted")" @onclick="@(() => OpenEdit(r))">
+                        <div class="brand-avatar" style="background:@(cat.Color)1f;color:@cat.Color"><MudIcon Icon="@cat.Icon" Size="Size.Small" /></div>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="row-title">@r.Name @if (r.Kind == TxnKinds.Expense && r.IsEssential) { <span class="tag">Essential</span> }</div>
+                            <div class="row-sub">
+                                @r.Category @Fmt.Dot @r.Frequency
+                                @if (!active && r.EndMonth != null) { <span> @Fmt.Dot ended @r.EndMonth.Value.ToString("MMM yyyy")</span> }
+                                else if (!active) { <span> @Fmt.Dot starts @r.StartMonth.ToString("MMM yyyy")</span> }
+                                else if (next != null) { <span> @Fmt.Dot next @next.Value.ToString("dd MMM")</span> }
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <div class="row-amount">@Fmt.Inr(r.Amount)</div>
+                            @if (r.IntervalMonths > 1) { <div class="row-sub">@Fmt.Inr(r.MonthlyEquivalent)/mo</div> }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="hint mt-4">
+            <MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Small" />
+            Recurring items appear in <a href="/transactions">Transactions</a> every month automatically and power your <a href="/fire-goals">FIRE plan</a>.
+            When an amount changes (rent hike, SIP step-up) just edit it: we keep history and apply the new amount from the month you choose.
+        </div>
+    }
+</div>
+
+<MudDialog @bind-Visible="DialogOpen" Options="DialogOpts">
+    <TitleContent><div class="dialog-title">@(Editing.Id == null ? $"New recurring {Label(Editing.Kind).ToLower()}" : "Edit recurring")</div></TitleContent>
+    <DialogContent>
+        @if (Editing.Id == null)
+        {
+            <div class="seg mb-4">
+                @foreach (var k in TxnKinds.All)
+                {
+                    <button class="seg-btn @(Editing.Kind == k ? "active" : "")" @onclick="@(() => { Editing.Kind = k; Editing.Category = Categories.DefaultFor(k); Editing.IsEssential = k == TxnKinds.Expense; })">@Label(k)</button>
+                }
+            </div>
+        }
+        <MudTextField @bind-Value="Editing.Name" Label="Name" Placeholder="@Placeholder(Editing.Kind)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+        <div class="d-flex gap-3 mb-3">
+            <MudNumericField @bind-Value="Editing.Amount" Label="Amount" Adornment="Adornment.Start" AdornmentText="@Fmt.Rupee" Format="N0" HideSpinButtons="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-1" />
+            <MudSelect T="string" @bind-Value="Editing.Frequency" Label="Repeats" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-1">
+                @foreach (var f in RecurringItem.Frequencies) { <MudSelectItem Value="@f">@f</MudSelectItem> }
+            </MudSelect>
+        </div>
+
+        <div class="field-label">Category</div>
+        <div class="cat-grid mb-3">
+            @foreach (var c in Categories.For(Editing.Kind))
+            {
+                <div class="cat-pill @(Editing.Category == c.Name ? "selected" : "")" style="--c:@c.Color" @onclick="@(() => Editing.Category = c.Name)">
+                    <MudIcon Icon="@c.Icon" Size="Size.Small" /><span>@c.Name</span>
+                </div>
+            }
+        </div>
+
+        <div class="d-flex gap-3 mb-3">
+            <MudNumericField @bind-Value="Editing.DayOfMonth" Label="Day of month" Min="1" Max="31" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-1" />
+            <MudDatePicker @bind-Date="StartDate" Label="@(Editing.Id == null ? "Starts from" : "Started")" OpenTo="OpenTo.Month" FixDay="1" DateFormat="MMM yyyy" Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-1" Disabled="@(Editing.Id != null)" />
+        </div>
+
+        @if (Editing.Kind == TxnKinds.Expense)
+        {
+            <MudSwitch @bind-Value="Editing.IsEssential" Color="Color.Primary" Label="Essential (needed even after retirement)" Class="mb-2" />
+        }
+
+        @if (Editing.Id != null && Original != null && (Original.Amount != Editing.Amount || Original.Frequency != Editing.Frequency))
+        {
+            <div class="hint mb-2">
+                <MudIcon Icon="@Icons.Material.Rounded.History" Size="Size.Small" />
+                <div>
+                    Apply the new amount from
+                    <MudDatePicker @bind-Date="ChangeFrom" OpenTo="OpenTo.Month" FixDay="1" DateFormat="MMM yyyy" Variant="Variant.Text" Margin="Margin.Dense" Style="display:inline-flex;max-width:140px" />.
+                    Earlier months keep @Fmt.Inr(Original.Amount).
+                </div>
+            </div>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (Editing.Id != null)
+        {
+            <MudButton Color="Color.Error" Variant="Variant.Text" OnClick="Stop" Class="me-auto">
+                @(Original?.EndMonth == null ? "Stop" : "Delete")
+            </MudButton>
+        }
+        <MudButton OnClick="@(() => DialogOpen = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="Busy">@(Busy ? "Saving..." : "Save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private FinanceSnapshot? Snap;
+    private string Tab = TxnKinds.Expense;
+    private bool DialogOpen, Busy;
+    private RecurringItem Editing = new();
+    private RecurringItem? Original;
+    private DateTime? ChangeFrom;
+    private static readonly DialogOptions DialogOpts = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    private DateTime? StartDate
+    {
+        get => Editing.StartMonth;
+        set => Editing.StartMonth = Fmt.MonthOf(value ?? DateTime.Today);
+    }
+
+    protected override async Task OnInitializedAsync() => Snap = await Engine.GetAsync();
+
+    private static string Label(string k) => k switch { TxnKinds.Income => "Income", TxnKinds.Investment => "Investments", _ => "Expenses" };
+    private static string IconFor(string k) => k switch { TxnKinds.Income => Icons.Material.Rounded.Work, TxnKinds.Investment => Icons.Material.Rounded.TrendingUp, _ => Icons.Material.Rounded.Home };
+    private static string Placeholder(string k) => k switch { TxnKinds.Income => "e.g. Salary", TxnKinds.Investment => "e.g. Parag Parikh Flexi Cap SIP", _ => "e.g. House rent" };
+    private static string EmptyText(string k) => k switch
+    {
+        TxnKinds.Income => "Add your salary so we can calculate savings rate and spendable money.",
+        TxnKinds.Investment => "Add SIPs, NPS, PPF... We'll assume they continue every month until you change them.",
+        _ => "Add rent, EMIs, school fees, maid, groceries... anything you pay every month."
+    };
+
+    private void OpenNew(string kind)
+    {
+        Editing = new RecurringItem { Kind = kind, Category = Categories.DefaultFor(kind), IsEssential = kind == TxnKinds.Expense, PaymentMode = kind == TxnKinds.Income ? "Net Banking" : "Auto-debit" };
+        Original = null;
+        DialogOpen = true;
+    }
+
+    private void OpenEdit(RecurringItem r)
+    {
+        Original = r;
+        Editing = Clone(r);
+        ChangeFrom = Fmt.ThisMonth;
+        DialogOpen = true;
+    }
+
+    private static RecurringItem Clone(RecurringItem r) => new()
+    {
+        Id = r.Id, UserId = r.UserId, Name = r.Name, Amount = r.Amount, Kind = r.Kind, Category = r.Category, Frequency = r.Frequency,
+        DayOfMonth = r.DayOfMonth, StartMonth = r.StartMonth, EndMonth = r.EndMonth, IsEssential = r.IsEssential, PaymentMode = r.PaymentMode, AccountId = r.AccountId
+    };
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(Editing.Name) || Editing.Amount <= 0) { Snackbar.Add("Enter a name and amount.", Severity.Warning); return; }
+        Busy = true;
+        try
+        {
+            Editing.UserId = Engine.UserId!;
+            Editing.DayOfMonth = Math.Clamp(Editing.DayOfMonth, 1, 31);
+            if (Editing.Id == null)
+            {
+                await Db.From<RecurringItem>().Insert(Editing);
+            }
+            else
+            {
+                var amountChanged = Original != null && (Original.Amount != Editing.Amount || Original.Frequency != Editing.Frequency);
+                var from = Fmt.MonthOf(ChangeFrom ?? Fmt.ThisMonth);
+                if (amountChanged && from > Fmt.MonthOf(Original!.StartMonth))
+                {
+                    // Close the old version the month before and start a new one: history stays correct
+                    var old = Clone(Original); old.EndMonth = from.AddMonths(-1);
+                    await Db.From<RecurringItem>().Update(old);
+                    var next = Clone(Editing); next.Id = null!; next.StartMonth = from; next.EndMonth = null;
+                    await Db.From<RecurringItem>().Insert(next);
+                }
+                else
+                {
+                    await Db.From<RecurringItem>().Update(Editing);
+                }
+            }
+            Snackbar.Add("Saved", Severity.Success);
+            DialogOpen = false;
+            Snap = await Engine.GetAsync(force: true);
+            Tab = Editing.Kind;
+        }
+        catch (Exception ex) { Snackbar.Add($"Couldn't save: {ex.Message}", Severity.Error); }
+        finally { Busy = false; }
+    }
+
+    private async Task Stop()
+    {
+        if (Original == null) return;
+        Busy = true;
+        try
+        {
+            var thisMonth = Fmt.ThisMonth;
+            if (Original.EndMonth != null || Fmt.MonthOf(Original.StartMonth) >= thisMonth)
+            {
+                await Db.From<RecurringItem>().Where(x => x.Id == Original.Id).Delete();
+                Snackbar.Add("Deleted", Severity.Info);
+            }
+            else
+            {
+                var stopped = Clone(Original); stopped.EndMonth = thisMonth.AddMonths(-1);
+                await Db.From<RecurringItem>().Update(stopped);
+                Snackbar.Add($"Stopped from {thisMonth:MMM yyyy}. Past months are kept.", Severity.Info);
+            }
+            DialogOpen = false;
+            Snap = await Engine.GetAsync(force: true);
+        }
+        catch (Exception ex) { Snackbar.Add($"Couldn't update: {ex.Message}", Severity.Error); }
+        finally { Busy = false; }
+    }
+}

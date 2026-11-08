@@ -1,4 +1,4 @@
-using Postgrest.Attributes;
+ï»¿using Postgrest.Attributes;
 using Postgrest.Models;
 using System;
 
@@ -211,7 +211,7 @@ namespace PranaWealthOS.Models
 
         public bool IsCredit => AccountType == "Credit Card";
         [Newtonsoft.Json.JsonIgnore]
-        public string DisplayName => string.IsNullOrWhiteSpace(Last4) ? $"{Institution} {Nickname}".Trim() : $"{Institution} {Nickname} ••{Last4}".Trim();
+        public string DisplayName => string.IsNullOrWhiteSpace(Last4) ? $"{Institution} {Nickname}".Trim() : $"{Institution} {Nickname} \u2022\u2022{Last4}".Trim();
     }
 
     // Recurring subscriptions (Netflix, Spotify, gym, SaaS...)

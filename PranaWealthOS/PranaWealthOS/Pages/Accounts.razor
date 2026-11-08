@@ -1,4 +1,4 @@
-@page "/accounts"
+ï»¿@page "/accounts"
 @inject Supabase.Client SupabaseClient
 @inject AuthenticationStateProvider AuthProvider
 @inject ISnackbar Snackbar
@@ -22,14 +22,14 @@
         <MudItem xs="12" sm="4">
             <div class="stat-card">
                 <span class="stat-label">Cash in Banks</span>
-                <span class="stat-value text-success">?@CashTotal.ToString("N0")</span>
+                <span class="stat-value text-success">â‚¹@CashTotal.ToString("N0")</span>
                 <span class="stat-sub">@AccountList.Count(a => !a.IsCredit) accounts</span>
             </div>
         </MudItem>
         <MudItem xs="12" sm="4">
             <div class="stat-card">
                 <span class="stat-label">Credit Card Dues</span>
-                <span class="stat-value text-error">?@CardDue.ToString("N0")</span>
+                <span class="stat-value text-error">â‚¹@CardDue.ToString("N0")</span>
                 <span class="stat-sub">@AccountList.Count(a => a.IsCredit) cards</span>
             </div>
         </MudItem>
@@ -66,24 +66,24 @@
                         <div class="d-flex justify-space-between align-start">
                             <div>
                                 <div class="bank-name">@acc.Institution</div>
-                                <div class="bank-type">@acc.AccountType @(string.IsNullOrWhiteSpace(acc.Nickname) ? "" : $"· {acc.Nickname}")</div>
+                                <div class="bank-type">@acc.AccountType @(string.IsNullOrWhiteSpace(acc.Nickname) ? "" : $"Â· {acc.Nickname}")</div>
                             </div>
                             <div>
                                 <MudIconButton Icon="@Icons.Material.Rounded.Edit" Size="Size.Small" Style="color:#fff" OnClick="@(() => OpenEdit(acc))" />
                                 <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" Style="color:#fff" OnClick="@(() => Delete(acc))" />
                             </div>
                         </div>
-                        <div class="bank-number">•••• •••• •••• @(string.IsNullOrWhiteSpace(acc.Last4) ? "0000" : acc.Last4)</div>
+                        <div class="bank-number">â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ @(string.IsNullOrWhiteSpace(acc.Last4) ? "0000" : acc.Last4)</div>
                         <div class="d-flex justify-space-between align-end">
                             <div>
                                 <div class="bank-type">@(acc.IsCredit ? "Outstanding" : "Balance")</div>
-                                <div class="bank-balance">?@acc.Balance.ToString("N0")</div>
+                                <div class="bank-balance">â‚¹@acc.Balance.ToString("N0")</div>
                             </div>
                             @if (acc.IsCredit && acc.CreditLimit > 0)
                             {
                                 <div class="text-end">
                                     <div class="bank-type">Limit</div>
-                                    <div class="fw-bold">?@acc.CreditLimit.ToString("N0")</div>
+                                    <div class="fw-bold">â‚¹@acc.CreditLimit.ToString("N0")</div>
                                 </div>
                             }
                         </div>

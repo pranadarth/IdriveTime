@@ -23,7 +23,7 @@ namespace PranaWealthOS.Models
         public decimal Amount { get; set; }
 
         [Column("txn_type")]
-        public string TxnType { get; set; } = "Expense"; // Expense | Income
+        public string TxnType { get; set; } = "Expense"; // Expense | Income | Investment
 
         [Column("category")]
         public string Category { get; set; } = "Other";
@@ -37,8 +37,26 @@ namespace PranaWealthOS.Models
         [Column("notes")]
         public string? Notes { get; set; }
 
+        // Links an entry to the recurring rule it fulfils (overrides or skips that month's auto entry)
+        [Column("recurring_id")]
+        public string? RecurringId { get; set; }
+
         [Newtonsoft.Json.JsonIgnore]
-        public bool IsExpense => TxnType != "Income";
+        public bool IsExpense => TxnType == "Expense";
+
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsIncome => TxnType == "Income";
+
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsInvestment => TxnType == "Investment";
+
+        // Counts towards "spent" (transfers between own accounts are excluded)
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsSpend => IsExpense && Category != "Transfers";
+
+        // Not persisted: true for entries generated from a recurring rule and not yet saved
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsVirtual { get; set; }
     }
 
     [Table("budgets")]
@@ -92,10 +110,57 @@ namespace PranaWealthOS.Models
             new("Other Income", MudBlazor.Icons.Material.Rounded.AttachMoney, "#15803d"),
         };
 
+        public static readonly List<CategoryInfo> Investment = new()
+        {
+            new("Equity SIP", MudBlazor.Icons.Material.Rounded.TrendingUp, "#6366f1"),
+            new("Index Fund", MudBlazor.Icons.Material.Rounded.StackedLineChart, "#4f46e5"),
+            new("Stocks", MudBlazor.Icons.Material.Rounded.CandlestickChart, "#7c3aed"),
+            new("NPS", MudBlazor.Icons.Material.Rounded.Elderly, "#0891b2"),
+            new("PPF", MudBlazor.Icons.Material.Rounded.Lock, "#0d9488"),
+            new("Debt Fund", MudBlazor.Icons.Material.Rounded.Savings, "#0284c7"),
+            new("Gold", MudBlazor.Icons.Material.Rounded.Diamond, "#ca8a04"),
+            new("RD / FD", MudBlazor.Icons.Material.Rounded.AccountBalance, "#059669"),
+            new("Other", MudBlazor.Icons.Material.Rounded.Category, "#6b7280"),
+        };
+
+        public static List<CategoryInfo> For(string kind) => kind switch
+        {
+            "Income" => Income,
+            "Investment" => Investment,
+            _ => Expense
+        };
+
+        public static string DefaultFor(string kind) => kind switch
+        {
+            "Income" => "Salary",
+            "Investment" => "Equity SIP",
+            _ => "Food & Dining"
+        };
+
         public static readonly string[] PaymentModes = { "UPI", "Credit Card", "Debit Card", "Net Banking", "Cash", "Auto-debit", "Wallet" };
 
         public static CategoryInfo Get(string? name) =>
-            Expense.Concat(Income).FirstOrDefault(c => c.Name == name) ?? Expense.Last();
+            Expense.Concat(Income).Concat(Investment).FirstOrDefault(c => c.Name == name) ?? Expense.Last();
+
+        // Kind inferred from description for imported rows
+        public static string GuessKind(string? description, bool isCredit)
+        {
+            if (isCredit) return "Income";
+            var d = (description ?? "").ToLowerInvariant();
+            string[] inv = { "zerodha", "groww", "upstox", "kuvera", "mutual fund", "sip", "nps", "ppf", "coin by", "indmoney", "smallcase", "bse star", "nse clearing", "iccl", "cams", "kfintech" };
+            return inv.Any(d.Contains) ? "Investment" : "Expense";
+        }
+
+        public static string AutoCategorizeInvestment(string? description)
+        {
+            var d = (description ?? "").ToLowerInvariant();
+            if (d.Contains("nps")) return "NPS";
+            if (d.Contains("ppf")) return "PPF";
+            if (d.Contains("gold") || d.Contains("sgb")) return "Gold";
+            if (d.Contains("index") || d.Contains("nifty")) return "Index Fund";
+            if (d.Contains("zerodha") || d.Contains("upstox") || d.Contains("smallcase")) return "Stocks";
+            return "Equity SIP";
+        }
 
         private static readonly (string Category, string[] Keywords)[] Rules =
         {

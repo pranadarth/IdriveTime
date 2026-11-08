@@ -1,0 +1,27 @@
+<div class="stat-card glass-tile @Class @(OnClick.HasDelegate ? "clickable" : "")" @onclick="OnClick" style="--tone:@Tone">
+    <div class="d-flex align-center justify-space-between">
+        <span class="stat-label">@Label</span>
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="stat-icon" style="background:@(Tone)1f;color:@Tone"><MudIcon Icon="@Icon" Size="Size.Small" /></span>
+        }
+    </div>
+    <span class="stat-value" style="@(ValueColor != null ? $"color:{ValueColor};-webkit-text-fill-color:{ValueColor}" : "")">@Value</span>
+    @if (Sub != null)
+    {
+        <span class="stat-sub">@Sub</span>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public RenderFragment? Sub { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string Tone { get; set; } = "#6366f1";
+    [Parameter] public string? ValueColor { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+}

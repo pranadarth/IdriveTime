@@ -10,10 +10,10 @@
 <div class="page-wrap">
     <MoneyTabs Subtitle="Every rupee in and out. Recurring items (salary, rent, SIPs) fill in automatically each month.">
         <Actions>
-            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="@(() => ImportOpen = true)">Import</MudButton>
-            <MudMenu Icon="@Icons.Material.Rounded.Download" AriaLabel="Export">
-                <MudMenuItem OnClick="@(() => Export(false))">Export @Month.ToString("MMM yyyy") (CSV)</MudMenuItem>
-                <MudMenuItem OnClick="@(() => Export(true))">Export last 12 months (CSV)</MudMenuItem>
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Rounded.UploadFile" OnClick="@(() => ImportOpen = true)" Class="btn-pill">Import</MudButton>
+            <MudMenu Label="Export" StartIcon="@Icons.Material.Rounded.Download" EndIcon="@Icons.Material.Rounded.KeyboardArrowDown" Variant="Variant.Outlined" Class="btn-pill-menu" AriaLabel="Export">
+                <MudMenuItem Icon="@Icons.Material.Rounded.CalendarMonth" OnClick="@(() => Export(false))">@Month.ToString("MMM yyyy") (CSV)</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Rounded.DateRange" OnClick="@(() => Export(true))">Last 12 months (CSV)</MudMenuItem>
             </MudMenu>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="@(() => OpenNew(TxnKinds.Expense))" Class="btn-pill d-none d-sm-flex">Add</MudButton>
         </Actions>

@@ -60,3 +60,7 @@
     .side-link, .bottom-link, .hub-tab, .seg-btn, .cat-pill { min-height: 40px; }
     .stat-card:hover, .side-link:hover, .hub-tab:hover, .cat-pill:hover { transform: none; }
 }
+
+.btn-pill-menu .mud-button-root { border-radius: 999px !important; padding-left: 16px !important; padding-right: 12px !important; }
+@media (max-width: 600px) { .page-actions > .mud-menu { flex: 1; } .page-actions > .mud-menu .mud-button-root { width: 100%; } }
+

@@ -1,0 +1,62 @@
+/* =========================================================
+   ArthaOne mobile optimisation - loaded last
+   ========================================================= */
+@media (max-width: 959.98px) {
+    /* Lighter blur = smoother scrolling on mid-range phones */
+    .panel, .stat-card, .empty-state, .glass, .hub-tabs, .seg, .mud-tabs-toolbar, .mud-paper-outlined, .sidebar, .topbar, .bottom-nav {
+        backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important;
+    }
+    .main-area::before, .hero-card::before { display: none; }
+    .stat-grid > *, .panel, .list-row { animation-duration: .3s !important; }
+    .bottom-nav { padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 600px) {
+    /* iOS zooms into inputs smaller than 16px */
+    input, select, textarea { font-size: 16px !important; }
+
+    .main-inner { padding: 12px 12px 96px; }
+    .page-header, .money-hub-head { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 16px; }
+    .page-title { font-size: 1.4rem !important; }
+    .page-subtitle { font-size: .85rem; }
+    .page-actions { width: 100%; }
+    .page-actions > .mud-button-root { flex: 1; }
+
+    .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+    .glass-tile, .stat-card { padding: 14px !important; border-radius: 16px !important; }
+    .glass-tile .stat-value, .stat-value { font-size: 1.15rem !important; }
+    .glass-tile .stat-icon, .stat-icon { width: 30px; height: 30px; }
+    .stat-label { font-size: .72rem; }
+    .stat-sub { font-size: .72rem; }
+
+    .panel { padding: 16px; border-radius: 16px; }
+    .hero-card, .glass-hero { padding: 18px; border-radius: 20px; }
+    .hero-value { font-size: 1.75rem !important; }
+    .hero-split { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; width: 100%; gap: 8px !important; }
+    .fire-row { grid-template-columns: 1fr 1fr; }
+
+    .hub-tabs { display: flex; width: 100%; }
+    .hub-tab { flex: 1; justify-content: center; padding: 8px 6px; font-size: .8rem; gap: 4px; }
+    .seg { display: flex; width: 100%; }
+    .seg-btn { flex: 1; justify-content: center; padding: 7px 8px; }
+
+    .mud-tab { min-width: 0 !important; padding: 6px 10px !important; font-size: .82rem !important; }
+    .search-glass { max-width: none; width: 100%; }
+    .panel-head { flex-direction: column; align-items: stretch; }
+    .holding-name { min-width: 0; }
+    .mud-simple-table table { font-size: .8rem; }
+    .mud-xs-table .mud-table-row { border-bottom: 1px solid var(--glass-border); }
+
+    .mud-dialog { margin: 8px !important; width: calc(100% - 16px) !important; max-width: none !important; max-height: calc(100% - 16px) !important; }
+
+    .fire-chart { height: 150px; gap: 2px; }
+    .date-chip { width: 38px; min-width: 38px; height: 40px; }
+    .row-title { font-size: .88rem; }
+    .topbar-title { font-size: .95rem; }
+}
+
+/* Comfortable tap targets, no sticky hover on touch */
+@media (pointer: coarse) {
+    .side-link, .bottom-link, .hub-tab, .seg-btn, .cat-pill { min-height: 40px; }
+    .stat-card:hover, .side-link:hover, .hub-tab:hover, .cat-pill:hover { transform: none; }
+}
